@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NEXUS — AI-Powered Development Platform</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Supabase CDNは削除し、Cloudflare Workers APIのみと通信します -->
+
+  <!-- 1. PlayCanvas Engine CDN (GAME STUDIO用) -->
+  <script src="https://code.playcanvas.com/playcanvas-stable.min.js"></script>
+
+  <!-- 2. Monaco Editor Loader CDN (APP STUDIO用) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 </head>
 <body>
   <div id="nexus-app">
@@ -23,37 +28,24 @@
           </svg>
         </div>
         <span class="brand-name">NEXUS</span>
-        <span class="brand-tag">v0.1.0-alpha [CORE]</span>
+        <span class="brand-tag">STUDIO HYBRID</span>
       </div>
 
       <div class="header-status">
         <span class="active-project-badge" id="header-active-project">プロジェクト未選択</span>
         <div class="status-indicator">
-          <span class="status-dot" id="cloud-status-dot"></span>
-          <span class="status-text" id="cloud-status-text">Cloudflare Workers: nexus</span>
+          <span class="status-dot"></span>
+          <span class="status-text" id="engine-status-text">Engine Ready</span>
         </div>
       </div>
 
       <div class="header-actions">
-        <!-- Backend API 設定確認ボタン -->
-        <button class="btn btn-secondary btn-sm" id="btn-open-config-modal" title="Backend接続状態">
-          ⚡ Gateway
-        </button>
-
-        <!-- 認証ボタン -->
-        <div id="auth-actions-container">
-          <button class="btn btn-primary btn-sm" id="btn-open-auth-modal">
-            🔑 Login / Sign Up
-          </button>
-        </div>
-
-        <button class="btn btn-danger-subtle btn-sm" id="btn-emergency-stop">
-          ⏹ ALL AGENTS STOP
-        </button>
+        <button class="btn btn-primary btn-sm" id="btn-quick-new-proj">+ New Project</button>
+        <button class="btn btn-danger-subtle btn-sm" id="btn-emergency-stop">⏹ STOP AGENTS</button>
       </div>
     </header>
 
-    <!-- BODY -->
+    <!-- BODY LAYOUT -->
     <div class="nexus-body">
       <!-- SIDEBAR -->
       <nav class="nexus-sidebar">
@@ -61,11 +53,11 @@
           <button class="nav-item active" data-view="dashboard">
             <span class="nav-icon">⬚</span> Dashboard
           </button>
-          <button class="nav-item" data-view="projects">
-            <span class="nav-icon">📁</span> Projects
-          </button>
           <button class="nav-item" data-view="workspace">
             <span class="nav-icon">⚡</span> Studio Workspace
+          </button>
+          <button class="nav-item" data-view="projects">
+            <span class="nav-icon">📁</span> Projects
           </button>
           <button class="nav-item" data-view="tasks">
             <span class="nav-icon">▦</span> Task Board
@@ -76,16 +68,9 @@
         </div>
 
         <div class="sidebar-footer">
-          <div class="user-profile-badge" id="sidebar-user-badge">
-            <div class="user-badge-avatar">👤</div>
-            <div class="user-badge-info">
-              <span class="user-badge-name" id="user-display-email">Guest (Local)</span>
-              <span class="user-badge-status" id="user-sync-status">Offline Storage</span>
-            </div>
-          </div>
           <div class="system-metric">
-            <div class="metric-label">Backend Gateway</div>
-            <div class="metric-val" id="metric-cloud-sync">nexus (CF)</div>
+            <div class="metric-label">Runtime Engine</div>
+            <div class="metric-val" id="metric-runtime">PlayCanvas + Monaco</div>
           </div>
         </div>
       </nav>
@@ -97,49 +82,113 @@
           <div class="view-header">
             <div>
               <h1 class="view-title">Command Center</h1>
-              <p class="view-desc">AIエージェントと人間が協調してプロダクトを設計・構築するハブです。</p>
+              <p class="view-desc">AIエージェントと人間が共同でゲーム・アプリを開発するスタジオです。</p>
             </div>
-            <button class="btn btn-primary" id="btn-quick-new-proj">+ 新規プロジェクト</button>
           </div>
 
           <div class="grid-stats">
             <div class="stat-card">
-              <div class="stat-label">登録プロジェクト</div>
+              <div class="stat-label">プロジェクト</div>
               <div class="stat-value" id="stat-proj-count">0</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">AI エージェント数</div>
-              <div class="stat-value">4 <span class="stat-sub">待機中</span></div>
+              <div class="stat-label">3D Engine</div>
+              <div class="stat-value text-accent" style="font-size:16px;">PlayCanvas WebGL</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">保留中の承認 (Gate)</div>
+              <div class="stat-label">Code Editor</div>
+              <div class="stat-value" style="font-size:16px; color:var(--accent-cyan);">Monaco IDE</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">承認待ち (Gate)</div>
               <div class="stat-value text-accent" id="stat-pending-approvals">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">バックエンド接続</div>
-              <div class="stat-value" id="stat-cloud-mode" style="font-size:16px;">Cloudflare</div>
             </div>
           </div>
 
           <div class="dash-columns">
             <div class="panel">
               <div class="panel-header">
-                <h3>最近のプロジェクト</h3>
+                <h3>スタジオ一覧（クリックで起動）</h3>
               </div>
               <div class="panel-body">
-                <div id="dash-recent-projects" class="project-list-compact">
-                  <div class="empty-state">プロジェクトがありません。「+ 新規プロジェクト」から作成してください。</div>
-                </div>
+                <div id="dash-recent-projects" class="project-list-compact"></div>
               </div>
             </div>
 
             <div class="panel">
               <div class="panel-header">
-                <h3>Agent Activity Log</h3>
+                <h3>AI Agent Activity Log</h3>
               </div>
               <div class="panel-body">
                 <div id="dash-activity-log" class="log-stream"></div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VIEW: WORKSPACE (GAME STUDIO / APP STUDIO) -->
+        <section id="view-workspace" class="nexus-view">
+          <div class="workspace-toolbar">
+            <div class="workspace-info">
+              <span class="badge" id="workspace-type-badge">STUDIO</span>
+              <span id="workspace-title" style="font-weight:600; font-size:14px;">Project</span>
+            </div>
+            <div class="workspace-controls" id="workspace-controls-game">
+              <button class="btn btn-secondary btn-sm" id="btn-add-cube">+ Cube</button>
+              <button class="btn btn-secondary btn-sm" id="btn-add-sphere">+ Sphere</button>
+              <button class="btn btn-secondary btn-sm" id="btn-add-light">+ Light</button>
+              <button class="btn btn-primary btn-sm" id="btn-toggle-play">▶ Play Game</button>
+            </div>
+            <div class="workspace-controls" id="workspace-controls-app" style="display:none;">
+              <button class="btn btn-secondary btn-sm" id="btn-format-code">Format</button>
+              <button class="btn btn-primary btn-sm" id="btn-run-code">▶ Refresh Preview</button>
+            </div>
+          </div>
+
+          <!-- A. GAME STUDIO INTERFACE -->
+          <div id="studio-game-container" class="studio-split-layout">
+            <!-- Hierarchy (左) -->
+            <div class="studio-sidebar-panel">
+              <div class="panel-sub-header">Hierarchy</div>
+              <div id="game-hierarchy-list" class="tree-list"></div>
+            </div>
+
+            <!-- 3D Viewport (中央) -->
+            <div class="studio-center-panel">
+              <canvas id="playcanvas-canvas"></canvas>
+              <div class="viewport-overlay-tag">PLAYCANVAS 3D VIEWPORT</div>
+            </div>
+
+            <!-- Inspector (右) -->
+            <div class="studio-sidebar-panel">
+              <div class="panel-sub-header">Inspector</div>
+              <div id="game-inspector-body" class="inspector-content">
+                <div class="empty-state">オブジェクトを選択してください</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- B. APP STUDIO INTERFACE -->
+          <div id="studio-app-container" class="studio-split-layout" style="display:none;">
+            <!-- File Explorer (左) -->
+            <div class="studio-sidebar-panel" style="width:180px;">
+              <div class="panel-sub-header">Explorer</div>
+              <div class="file-tree" id="app-file-tree">
+                <div class="file-item active" data-file="index.html">📄 index.html</div>
+                <div class="file-item" data-file="style.css">🎨 style.css</div>
+                <div class="file-item" data-file="main.js">⚡ main.js</div>
+              </div>
+            </div>
+
+            <!-- Monaco Editor (中央) -->
+            <div class="studio-center-panel" style="position:relative;">
+              <div id="monaco-editor-container"></div>
+            </div>
+
+            <!-- Live Preview (右) -->
+            <div class="studio-sidebar-panel" style="width:40%;">
+              <div class="panel-sub-header">Live Sandbox Preview</div>
+              <iframe id="app-preview-frame" sandbox="allow-scripts allow-modals"></iframe>
             </div>
           </div>
         </section>
@@ -149,39 +198,11 @@
           <div class="view-header">
             <div>
               <h1 class="view-title">Project Manager</h1>
-              <p class="view-desc" id="projects-view-desc">GAME STUDIO または APP STUDIO のプロジェクトを作成・管理します。</p>
+              <p class="view-desc">作成済みプロジェクトの切替・新規作成。</p>
             </div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn btn-secondary btn-sm" id="btn-refresh-projects">🔄 再読込</button>
-              <button class="btn btn-primary" id="btn-open-create-modal">+ プロジェクト作成</button>
-            </div>
+            <button class="btn btn-primary" id="btn-open-create-modal">+ プロジェクト作成</button>
           </div>
-
           <div id="projects-grid" class="projects-grid"></div>
-        </section>
-
-        <!-- VIEW: WORKSPACE -->
-        <section id="view-workspace" class="nexus-view">
-          <div class="view-header">
-            <div>
-              <h1 class="view-title" id="workspace-title">Studio Workspace</h1>
-              <p class="view-desc" id="workspace-subtitle">プロジェクトを選択してください</p>
-            </div>
-            <div class="workspace-header-actions" style="display:flex; gap:8px; align-items:center;">
-              <button class="btn btn-secondary btn-sm" id="btn-save-current-proj" style="display:none;">
-                💾 Save Project
-              </button>
-              <span class="badge" id="workspace-type-badge">NO PROJECT</span>
-            </div>
-          </div>
-
-          <div class="studio-container" id="studio-placeholder">
-            <div class="studio-empty">
-              <div class="studio-empty-icon">⬡</div>
-              <h2>プロジェクトが読み込まれていません</h2>
-              <p>「Projects」画面から作業対象のプロジェクトを選択して Studio を初期化してください。</p>
-            </div>
-          </div>
         </section>
 
         <!-- VIEW: TASK BOARD -->
@@ -189,43 +210,15 @@
           <div class="view-header">
             <div>
               <h1 class="view-title">Human-AI Task Board</h1>
-              <p class="view-desc">タスクを人間が指示し、AIエージェントが分担・実行します。</p>
+              <p class="view-desc">人間が承認ゲート（Approval Gate）で変更を検査します。</p>
             </div>
             <button class="btn btn-primary btn-sm" id="btn-add-task">+ タスク作成</button>
           </div>
-
           <div class="kanban-board">
-            <div class="kanban-col" data-col="backlog">
-              <div class="kanban-col-header">
-                <span>Backlog (未着手)</span>
-                <span class="kanban-count" id="count-backlog">0</span>
-              </div>
-              <div class="kanban-cards" id="col-backlog"></div>
-            </div>
-
-            <div class="kanban-col" data-col="in_progress">
-              <div class="kanban-col-header">
-                <span>In Progress (作業中)</span>
-                <span class="kanban-count" id="count-inprogress">0</span>
-              </div>
-              <div class="kanban-cards" id="col-in_progress"></div>
-            </div>
-
-            <div class="kanban-col" data-col="review">
-              <div class="kanban-col-header">
-                <span>Review / Gate (承認待ち)</span>
-                <span class="kanban-count text-accent" id="count-review">0</span>
-              </div>
-              <div class="kanban-cards" id="col-review"></div>
-            </div>
-
-            <div class="kanban-col" data-col="done">
-              <div class="kanban-col-header">
-                <span>Done (完了)</span>
-                <span class="kanban-count" id="count-done">0</span>
-              </div>
-              <div class="kanban-cards" id="col-done"></div>
-            </div>
+            <div class="kanban-col"><div class="kanban-col-header">Backlog</div><div class="kanban-cards" id="col-backlog"></div></div>
+            <div class="kanban-col"><div class="kanban-col-header">In Progress</div><div class="kanban-cards" id="col-in_progress"></div></div>
+            <div class="kanban-col"><div class="kanban-col-header">Review / Gate (要承認)</div><div class="kanban-cards" id="col-review"></div></div>
+            <div class="kanban-col"><div class="kanban-col-header">Done</div><div class="kanban-cards" id="col-done"></div></div>
           </div>
         </section>
 
@@ -233,153 +226,48 @@
         <section id="view-agents" class="nexus-view">
           <div class="view-header">
             <div>
-              <h1 class="view-title">NEXUS AI Team & Human Supervision</h1>
-              <p class="view-desc">特化エージェントの統制・指示出し・ログ監視。</p>
+              <h1 class="view-title">NEXUS AI Team</h1>
+              <p class="view-desc">AIエージェントにコード作成・3Dシーン変更を指示します。</p>
             </div>
           </div>
 
           <div class="agents-layout">
             <div class="agents-roster">
               <div class="agent-card">
-                <div class="agent-card-header">
-                  <div class="agent-avatar qwen">Q</div>
-                  <div>
-                    <div class="agent-name">Qwen <span class="agent-role">Developer</span></div>
-                    <div class="agent-model">CF: @cf/qwen/qwen2.5-coder-7b-instruct</div>
-                  </div>
-                </div>
-                <div class="agent-status-row">
-                  <span class="badge badge-idle">Standby</span>
-                  <button class="btn btn-xs btn-secondary" onclick="nexusApp.triggerAgent('Qwen')">タスク割当</button>
-                </div>
+                <div class="agent-avatar qwen">Q</div>
+                <div><strong>Qwen</strong> Developer<div class="agent-model">Full-Stack & Scripts</div></div>
               </div>
-
               <div class="agent-card">
-                <div class="agent-card-header">
-                  <div class="agent-avatar llama">L</div>
-                  <div>
-                    <div class="agent-name">Llama <span class="agent-role">Architect</span></div>
-                    <div class="agent-model">CF: @cf/meta/llama-3.1-8b-instruct</div>
-                  </div>
-                </div>
-                <div class="agent-status-row">
-                  <span class="badge badge-idle">Standby</span>
-                  <button class="btn btn-xs btn-secondary" onclick="nexusApp.triggerAgent('Llama')">設計依頼</button>
-                </div>
+                <div class="agent-avatar llama">L</div>
+                <div><strong>Llama</strong> Architect<div class="agent-model">3D Scene & Systems</div></div>
               </div>
-
               <div class="agent-card">
-                <div class="agent-card-header">
-                  <div class="agent-avatar deepseek">D</div>
-                  <div>
-                    <div class="agent-name">DeepSeek <span class="agent-role">Reviewer</span></div>
-                    <div class="agent-model">CF: @cf/deepseek-ai/deepseek-r1-distill-qwen-32b</div>
-                  </div>
-                </div>
-                <div class="agent-status-row">
-                  <span class="badge badge-idle">Standby</span>
-                  <button class="btn btn-xs btn-secondary" onclick="nexusApp.triggerAgent('DeepSeek')">レビュー実行</button>
-                </div>
-              </div>
-
-              <div class="agent-card">
-                <div class="agent-card-header">
-                  <div class="agent-avatar glm">G</div>
-                  <div>
-                    <div class="agent-name">GLM <span class="agent-role">Tester</span></div>
-                    <div class="agent-model">CF: @cf/thudm/glm-4-9b-chat</div>
-                  </div>
-                </div>
-                <div class="agent-status-row">
-                  <span class="badge badge-idle">Standby</span>
-                  <button class="btn btn-xs btn-secondary" onclick="nexusApp.triggerAgent('GLM')">テスト実行</button>
-                </div>
+                <div class="agent-avatar deepseek">D</div>
+                <div><strong>DeepSeek</strong> Reviewer<div class="agent-model">Quality & Security</div></div>
               </div>
             </div>
 
-            <!-- CHAT PANEL -->
             <div class="agent-chat-panel">
               <div class="chat-header">
-                <span class="chat-title">AI Direct Instruction Console</span>
-                <div class="chat-target">
-                  宛先: 
-                  <select id="chat-agent-select" class="form-select-sm">
-                    <option value="Llama (Architect)">Llama (Architect)</option>
-                    <option value="Qwen (Developer)">Qwen (Developer)</option>
-                    <option value="DeepSeek (Reviewer)">DeepSeek (Reviewer)</option>
-                    <option value="GLM (Tester)">GLM (Tester)</option>
-                  </select>
-                </div>
+                <span>AI Studio Commander</span>
+                <select id="chat-agent-select" class="form-select-sm">
+                  <option value="Qwen">Qwen (Developer)</option>
+                  <option value="Llama">Llama (Architect)</option>
+                </select>
               </div>
               <div class="chat-messages" id="chat-messages">
                 <div class="chat-bubble system">
-                  [SYSTEM] NEXUS CORE Agent Dispatcher Initialized. Cloudflare Edge APIと連携中。
+                  [SYSTEM] NEXUS AI Studio Ready. GAME STUDIOでは3Dオブジェクト追加、APP STUDIOではHTML/JS生成を直接指示できます。
                 </div>
               </div>
               <form class="chat-input-bar" id="chat-form">
-                <input type="text" id="chat-input" placeholder="エージェントへの指示を入力..." required autocomplete="off">
+                <input type="text" id="chat-input" placeholder="例: '3Dシーンに赤いキューブを追加して' または 'ネオンのカウンターボタンを作って'" required>
                 <button type="submit" class="btn btn-primary">送信</button>
               </form>
             </div>
           </div>
         </section>
       </main>
-    </div>
-
-    <!-- MODAL: GATEWAY CONFIG -->
-    <div class="modal-overlay" id="modal-supabase-config">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Cloudflare Backend Gateway</h3>
-          <button class="btn-close" id="btn-close-config-modal">✕</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-hint-text">
-            NEXUSフロントエンドは Cloudflare Workers (`nexus`) 経由で安全に通信します。<br>
-            ブラウザ側にSupabaseのSecret Keyや直接認証情報は保持されません。
-          </p>
-          <div class="form-group">
-            <label for="cfg-api-url">Backend Gateway Base URL</label>
-            <input type="url" id="cfg-api-url" class="form-input" placeholder="https://nexus.liushengluntailang.workers.dev" required>
-          </div>
-          <div id="config-status-msg" class="status-msg-box" style="display:none;"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="btn-test-gateway">疎通テスト (/api/health)</button>
-          <button class="btn btn-primary" id="btn-save-config">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODAL: AUTH -->
-    <div class="modal-overlay" id="modal-auth">
-      <div class="modal-card modal-card-sm">
-        <div class="modal-header">
-          <h3 id="auth-modal-title">NEXUS Cloud Login</h3>
-          <button class="btn-close" id="btn-close-auth-modal">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="auth-tabs">
-            <button class="auth-tab-btn active" id="tab-btn-login">Login</button>
-            <button class="auth-tab-btn" id="tab-btn-signup">Sign Up</button>
-          </div>
-
-          <form id="auth-form">
-            <div class="form-group">
-              <label for="auth-email">Email Address</label>
-              <input type="email" id="auth-email" class="form-input" placeholder="developer@nexus.ai" required autocomplete="email">
-            </div>
-            <div class="form-group">
-              <label for="auth-password">Password</label>
-              <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required autocomplete="current-password" minlength="6">
-            </div>
-            <div id="auth-error-msg" class="auth-error-box" style="display:none;"></div>
-            <button type="submit" class="btn btn-primary" id="btn-auth-submit" style="width:100%; margin-top:12px;">
-              Login
-            </button>
-          </form>
-        </div>
-      </div>
     </div>
 
     <!-- MODAL: CREATE PROJECT -->
@@ -391,18 +279,18 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="proj-name">プロジェクト名</label>
-            <input type="text" id="proj-name" class="form-input" placeholder="my-cyber-game" required>
+            <label>プロジェクト名</label>
+            <input type="text" id="proj-name" class="form-input" placeholder="my-awesome-nexus" required>
           </div>
           <div class="form-group">
-            <label>Studio 種別を選択</label>
+            <label>Studio 環境を選択</label>
             <div class="studio-select-grid">
               <label class="studio-option active">
                 <input type="radio" name="studio-type" value="GAME" checked>
                 <div class="studio-box">
                   <div class="studio-box-icon">🎮</div>
                   <div class="studio-box-title">GAME STUDIO</div>
-                  <div class="studio-box-desc">PlayCanvas Engineベースの独自3D制作環境。</div>
+                  <div class="studio-box-desc">PlayCanvas 3D Engine。3Dシーン編集、オブジェクト配置、ゲーム開発。</div>
                 </div>
               </label>
               <label class="studio-option">
@@ -410,19 +298,15 @@
                 <div class="studio-box">
                   <div class="studio-box-icon">💻</div>
                   <div class="studio-box-title">APP STUDIO</div>
-                  <div class="studio-box-desc">Monaco EditorベースのWebアプリIDE。</div>
+                  <div class="studio-box-desc">Monaco Editor IDE。Webフロントエンド、HTML/CSS/JSライブプレビュー。</div>
                 </div>
               </label>
             </div>
           </div>
-          <div class="form-group">
-            <label for="proj-desc">プロジェクト概要</label>
-            <textarea id="proj-desc" class="form-input" rows="3" placeholder="概要を入力"></textarea>
-          </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="btn-cancel-proj">キャンセル</button>
-          <button class="btn btn-primary" id="btn-submit-proj">作成</button>
+          <button class="btn btn-primary" id="btn-submit-proj">スタジオ起動</button>
         </div>
       </div>
     </div>
@@ -432,29 +316,26 @@
       <div class="modal-card modal-card-gate">
         <div class="modal-header gate-header">
           <div>
-            <span class="gate-warning-badge">HUMAN APPROVAL REQUIRED</span>
-            <h3 id="gate-action-title">AIによるファイル変更の承認</h3>
+            <span class="gate-warning-badge">APPROVAL REQUIRED</span>
+            <h3 id="gate-action-title">AI変更提案の承認</h3>
           </div>
         </div>
         <div class="modal-body">
           <div class="diff-viewer">
-            <div class="diff-header" id="gate-target-file">Target: /src/playerController.js</div>
+            <div class="diff-header" id="gate-target-file">Target: Studio Workspace</div>
             <pre class="diff-body" id="gate-diff-content"></pre>
           </div>
-          <div class="gate-agent-info" id="gate-agent-info">Requested by: Qwen Developer</div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="gate-btn-reject">Reject (却下)</button>
-          <button class="btn btn-primary" id="gate-btn-approve">Approve (承認して適用)</button>
+          <button class="btn btn-primary" id="gate-btn-approve">Approve & Apply (承認して適用)</button>
         </div>
       </div>
     </div>
 
-    <!-- TOAST -->
     <div id="toast" class="toast"></div>
   </div>
 
-  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
