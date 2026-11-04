@@ -1,139 +1,122 @@
 /**
  * NEXUS CORE — Application Logic & State Store
- * Phase 1 + Supabase Cloud Integration + Render Build Support
+ * Phase 1 + Cloudflare Workers Gateway Integration
  */
 
 const STORAGE_KEY = 'nexus_core_state_v1';
-const SUPABASE_CONFIG_KEY = 'nexus_supabase_config_v1';
+const AUTH_TOKEN_KEY = 'nexus_auth_token_v1';
+const GATEWAY_URL_KEY = 'nexus_gateway_url_v1';
 
 // ==========================================
-// 1. SUPABASE SERVICE LAYER
+// 1. CLOUDFLARE WORKERS BACKEND CLIENT
 // ==========================================
-class NexusSupabase {
-  constructor(store) {
-    this.store = store;
-    this.client = null;
-    this.currentUser = null;
-    this.config = this.loadConfig();
-    this.initClient();
-  }
-
-  loadConfig() {
-    // 【要件5】Render Static Site ビルド時に生成された config.js を最優先
-    if (typeof window !== 'undefined' && window.__NEXUS_CONFIG__ && window.__NEXUS_CONFIG__.SUPABASE_URL && window.__NEXUS_CONFIG__.SUPABASE_PUBLISHABLE_KEY) {
-      return {
-        url: window.__NEXUS_CONFIG__.SUPABASE_URL.trim(),
-        key: window.__NEXUS_CONFIG__.SUPABASE_PUBLISHABLE_KEY.trim(),
-        isEnvManaged: true
-      };
-    }
-
-    // フォールバック: localStorage
-    try {
-      const data = localStorage.getItem(SUPABASE_CONFIG_KEY);
-      return data ? { ...JSON.parse(data), isEnvManaged: false } : { url: '', key: '', isEnvManaged: false };
-    } catch (e) {
-      return { url: '', key: '', isEnvManaged: false };
-    }
-  }
-
-  saveConfig(url, key) {
-    this.config = { url: url.trim(), key: key.trim(), isEnvManaged: false };
-    localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(this.config));
-    return this.initClient();
-  }
-
-  clearConfig() {
-    this.config = { url: '', key: '', isEnvManaged: false };
-    localStorage.removeItem(SUPABASE_CONFIG_KEY);
-    this.client = null;
+class NexusBackendClient {
+  constructor() {
+    this.baseUrl = this.loadBaseUrl();
+    this.token = localStorage.getItem(AUTH_TOKEN_KEY) || null;
     this.currentUser = null;
   }
 
-  initClient() {
-    if (!this.config.url || !this.config.key) {
-      this.client = null;
-      return false;
+  loadBaseUrl() {
+    // 1. config.js (Render ビルド時に注入)
+    if (typeof window !== 'undefined' && window.__NEXUS_CONFIG__ && window.__NEXUS_CONFIG__.API_BASE_URL) {
+      return window.__NEXUS_CONFIG__.API_BASE_URL.replace(/\/$/, '');
     }
+    // 2. localStorage
+    const saved = localStorage.getItem(GATEWAY_URL_KEY);
+    if (saved) return saved.replace(/\/$/, '');
+    // 3. デフォルトフォールバック
+    return 'https://nexus.liushengluntailang.workers.dev';
+  }
 
-    // Secret Keyの誤入力をブラウザ側で遮断
-    if (this.config.key.startsWith('sb_secret_') || this.config.key.includes('service_role')) {
-      throw new Error('Secret key (sb_secret_...) cannot be used in browser client. Please use Publishable or Anon key.');
-    }
+  setBaseUrl(url) {
+    this.baseUrl = url.trim().replace(/\/$/, '');
+    localStorage.setItem(GATEWAY_URL_KEY, this.baseUrl);
+  }
 
-    try {
-      if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-        this.client = window.supabase.createClient(this.config.url, this.config.key, {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-          }
-        });
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('Failed to init Supabase client:', err);
-      this.client = null;
-      return false;
+  setToken(token) {
+    this.token = token;
+    if (token) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
     }
   }
 
-  isConfigured() {
-    return Boolean(this.client);
-  }
+  async request(endpoint, options = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    };
 
-  isAuthenticated() {
-    return Boolean(this.currentUser);
-  }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
 
-  async signUp(email, password) {
-    if (!this.client) throw new Error('Supabase is not configured.');
-    const { data, error } = await this.client.auth.signUp({ email, password });
-    if (error) throw error;
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}: Request failed`);
+    }
     return data;
   }
 
-  async signIn(email, password) {
-    if (!this.client) throw new Error('Supabase is not configured.');
-    const { data, error } = await this.client.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  // API Methods
+  async checkHealth() {
+    return this.request('/api/health');
+  }
+
+  async signUp(email, password) {
+    return this.request('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  }
+
+  async login(email, password) {
+    const data = await this.request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    this.setToken(data.access_token);
     this.currentUser = data.user;
     return data;
   }
 
-  async signOut() {
-    if (!this.client) return;
-    const { error } = await this.client.auth.signOut();
-    this.currentUser = null;
-    if (error) throw error;
+  async logout() {
+    try {
+      if (this.token) {
+        await this.request('/api/auth/logout', { method: 'POST' });
+      }
+    } finally {
+      this.setToken(null);
+      this.currentUser = null;
+    }
   }
 
   async checkSession() {
-    if (!this.client) return null;
+    if (!this.token) {
+      this.currentUser = null;
+      return null;
+    }
     try {
-      const { data: { session }, error } = await this.client.auth.getSession();
-      if (error) throw error;
-      this.currentUser = session ? session.user : null;
+      const data = await this.request('/api/auth/user');
+      this.currentUser = data.user;
       return this.currentUser;
     } catch (e) {
-      console.warn('Session check warning:', e.message);
+      this.setToken(null);
       this.currentUser = null;
       return null;
     }
   }
 
-  async fetchCloudProjects() {
-    if (!this.client || !this.currentUser) return null;
-    const { data, error } = await this.client
-      .from('projects')
-      .select('*')
-      .order('updated_at', { ascending: false });
-
-    if (error) throw error;
-
-    return data.map(item => ({
+  async fetchProjects() {
+    const list = await this.request('/api/projects');
+    return list.map(item => ({
       id: item.id,
       name: item.name,
       type: item.project_data?.type || 'GAME',
@@ -145,43 +128,33 @@ class NexusSupabase {
     }));
   }
 
-  async createCloudProject(project) {
-    if (!this.client || !this.currentUser) return null;
-
+  async createProject(project) {
     const payload = {
       name: project.name,
       description: project.desc,
-      user_id: this.currentUser.id,
       project_data: {
         type: project.type,
         internalId: project.id,
         files: project.project_data?.files || []
       }
     };
-
-    const { data, error } = await this.client
-      .from('projects')
-      .insert([payload])
-      .select()
-      .single();
-
-    if (error) throw error;
-
+    const created = await this.request('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
     return {
-      id: data.id,
-      name: data.name,
-      type: data.project_data?.type || 'GAME',
-      desc: data.description || '',
-      created: new Date(data.created_at).toLocaleDateString(),
-      updated_at: data.updated_at,
-      project_data: data.project_data,
+      id: created.id,
+      name: created.name,
+      type: created.project_data?.type || 'GAME',
+      desc: created.description || '',
+      created: new Date(created.created_at).toLocaleDateString(),
+      updated_at: created.updated_at,
+      project_data: created.project_data,
       isCloud: true
     };
   }
 
-  async saveCloudProject(project) {
-    if (!this.client || !this.currentUser) return null;
-
+  async saveProject(project) {
     const payload = {
       name: project.name,
       description: project.desc,
@@ -191,27 +164,16 @@ class NexusSupabase {
         savedAt: new Date().toISOString()
       }
     };
-
-    const { data, error } = await this.client
-      .from('projects')
-      .update(payload)
-      .eq('id', project.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    return this.request(`/api/projects/${project.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
   }
 
-  async deleteCloudProject(projectId) {
-    if (!this.client || !this.currentUser) return null;
-    const { error } = await this.client
-      .from('projects')
-      .delete()
-      .eq('id', projectId);
-
-    if (error) throw error;
-    return true;
+  async deleteProject(projectId) {
+    return this.request(`/api/projects/${projectId}`, {
+      method: 'DELETE'
+    });
   }
 }
 
@@ -235,7 +197,6 @@ class NexusStore {
       const data = localStorage.getItem(STORAGE_KEY);
       return data ? JSON.parse(data) : null;
     } catch (e) {
-      console.warn('Failed to read from localStorage', e);
       return null;
     }
   }
@@ -337,14 +298,14 @@ class NexusStore {
 class NexusApp {
   constructor() {
     this.store = new NexusStore();
-    this.supabase = new NexusSupabase(this.store);
+    this.backend = new NexusBackendClient();
     this.currentView = 'dashboard';
     this.authMode = 'login';
 
     this.initElements();
     this.bindEvents();
     this.seedInitialDataIfEmpty();
-    this.initSupabaseAuthListener();
+    this.initSession();
     this.render();
   }
 
@@ -369,7 +330,6 @@ class NexusApp {
     this.userSyncStatus = document.getElementById('user-sync-status');
     this.cloudStatusDot = document.getElementById('cloud-status-dot');
     this.cloudStatusText = document.getElementById('cloud-status-text');
-    this.metricCloudSync = document.getElementById('metric-cloud-sync');
     this.statCloudMode = document.getElementById('stat-cloud-mode');
     this.btnSaveCurrentProj = document.getElementById('btn-save-current-proj');
   }
@@ -386,7 +346,7 @@ class NexusApp {
     document.getElementById('btn-close-proj-modal').addEventListener('click', () => this.closeCreateModal());
     document.getElementById('btn-cancel-proj').addEventListener('click', () => this.closeCreateModal());
     document.getElementById('btn-submit-proj').addEventListener('click', () => this.handleCreateProjectSubmit());
-    document.getElementById('btn-refresh-projects').addEventListener('click', () => this.syncProjectsFromSource());
+    document.getElementById('btn-refresh-projects').addEventListener('click', () => this.syncProjects());
     this.btnSaveCurrentProj.addEventListener('click', () => this.handleSaveCurrentProject());
 
     document.getElementById('btn-add-task').addEventListener('click', () => this.promptCreateTask());
@@ -407,7 +367,7 @@ class NexusApp {
     document.getElementById('btn-open-config-modal').addEventListener('click', () => this.openConfigModal());
     document.getElementById('btn-close-config-modal').addEventListener('click', () => this.closeConfigModal());
     document.getElementById('btn-save-config').addEventListener('click', () => this.handleSaveConfig());
-    document.getElementById('btn-clear-config').addEventListener('click', () => this.handleClearConfig());
+    document.getElementById('btn-test-gateway').addEventListener('click', () => this.testGatewayHealth());
 
     document.getElementById('btn-open-auth-modal').addEventListener('click', () => this.openAuthModal('login'));
     document.getElementById('btn-close-auth-modal').addEventListener('click', () => this.closeAuthModal());
@@ -419,69 +379,36 @@ class NexusApp {
     });
   }
 
-  async initSupabaseAuthListener() {
-    if (!this.supabase.isConfigured()) {
-      this.renderCloudStatus();
-      return;
-    }
-
+  async initSession() {
     try {
-      const user = await this.supabase.checkSession();
+      const user = await this.backend.checkSession();
       if (user) {
-        this.store.logActivity('Supabase', `セッションを復元しました: ${user.email}`);
-        await this.syncProjectsFromSource();
-      }
-
-      if (this.supabase.client) {
-        this.supabase.client.auth.onAuthStateChange(async (event, session) => {
-          this.supabase.currentUser = session ? session.user : null;
-          if (event === 'SIGNED_IN') {
-            this.showToast(`Logged in as ${session.user.email}`);
-            this.store.logActivity('Auth', `ログインに成功しました: ${session.user.email}`);
-            await this.syncProjectsFromSource();
-          } else if (event === 'SIGNED_OUT') {
-            this.showToast('Logged out');
-            this.store.logActivity('Auth', 'ログアウトしました');
-            this.store.cloudProjects = [];
-          }
-          this.render();
-        });
+        this.store.logActivity('Cloudflare', `セッション復元: ${user.email}`);
+        await this.syncProjects();
       }
     } catch (err) {
-      console.warn('Supabase auth init notice:', err.message);
+      console.warn('Session check failed:', err.message);
     }
-
     this.render();
   }
 
-  async syncProjectsFromSource() {
-    if (this.supabase.isAuthenticated()) {
+  async syncProjects() {
+    if (this.backend.currentUser) {
       try {
-        const cloudList = await this.supabase.fetchCloudProjects();
-        if (cloudList) {
-          this.store.cloudProjects = cloudList;
-          this.showToast('クラウドプロジェクトを同期しました');
-        }
+        const cloudList = await this.backend.fetchProjects();
+        this.store.cloudProjects = cloudList;
+        this.showToast('Cloudflare経由でプロジェクトを同期しました');
       } catch (err) {
         this.showToast(`同期エラー: ${err.message}`);
-        this.store.logActivity('Supabase Error', `一覧取得失敗: ${err.message}`);
+        this.store.logActivity('Gateway Error', `一覧取得失敗: ${err.message}`);
       }
     }
     this.render();
   }
 
   openConfigModal() {
-    document.getElementById('cfg-supabase-url').value = this.supabase.config.url || '';
-    document.getElementById('cfg-supabase-key').value = this.supabase.config.key || '';
+    document.getElementById('cfg-api-url').value = this.backend.baseUrl;
     const statusMsg = document.getElementById('config-status-msg');
-    const hintText = document.getElementById('cfg-hint-text');
-
-    if (this.supabase.config.isEnvManaged) {
-      hintText.innerHTML = `<span style="color:var(--accent-green); font-weight:600;">⚡ Render Environment Managed:</span><br>接続情報はビルド環境変数から自動適用されています。手動変更はローカルにのみ保存されます。`;
-    } else {
-      hintText.innerHTML = `Supabaseプロジェクトの接続情報を入力してください。<br>※ 公開鍵のみ保存されます。Secret Keyは絶対に入力しないでください。`;
-    }
-
     statusMsg.style.display = 'none';
     this.configModal.classList.add('active');
   }
@@ -490,43 +417,39 @@ class NexusApp {
     this.configModal.classList.remove('active');
   }
 
-  async handleSaveConfig() {
-    const url = document.getElementById('cfg-supabase-url').value;
-    const key = document.getElementById('cfg-supabase-key').value;
+  async testGatewayHealth() {
     const statusMsg = document.getElementById('config-status-msg');
+    const inputUrl = document.getElementById('cfg-api-url').value.trim();
+    statusMsg.style.display = 'block';
+    statusMsg.textContent = '疎通テスト実行中 (/api/health)...';
+    statusMsg.className = 'status-msg-box';
 
     try {
-      this.supabase.saveConfig(url, key);
-      statusMsg.textContent = 'Supabaseクライアントを初期化しました。';
-      statusMsg.className = 'status-msg-box success';
-      statusMsg.style.display = 'block';
-
-      await this.initSupabaseAuthListener();
-      this.showToast('Supabase settings saved.');
-      setTimeout(() => this.closeConfigModal(), 800);
-    } catch (err) {
-      statusMsg.textContent = err.message;
+      const res = await fetch(`${inputUrl}/api/health`);
+      const data = await res.json();
+      if (data.status === 'ok') {
+        statusMsg.textContent = `✔ 疎通成功! Worker: ${data.worker} (Supabase Configured: ${data.supabaseConfigured})`;
+        statusMsg.className = 'status-msg-box success';
+      } else {
+        throw new Error(data.error || 'Invalid response');
+      }
+    } catch (e) {
+      statusMsg.textContent = `❌ 接続失敗: ${e.message}`;
       statusMsg.className = 'status-msg-box error';
-      statusMsg.style.display = 'block';
     }
   }
 
-  handleClearConfig() {
-    if (confirm('Supabase接続設定を削除し、ローカルモードに戻しますか？')) {
-      this.supabase.clearConfig();
-      this.store.cloudProjects = [];
-      this.showToast('Supabase config cleared.');
+  handleSaveConfig() {
+    const inputUrl = document.getElementById('cfg-api-url').value.trim();
+    if (inputUrl) {
+      this.backend.setBaseUrl(inputUrl);
+      this.showToast(`Backend Gateway: ${inputUrl}`);
       this.closeConfigModal();
       this.render();
     }
   }
 
   openAuthModal(mode = 'login') {
-    if (!this.supabase.isConfigured()) {
-      this.showToast('Supabase接続情報が未設定です');
-      this.openConfigModal();
-      return;
-    }
     this.switchAuthTab(mode);
     document.getElementById('auth-error-msg').style.display = 'none';
     document.getElementById('auth-email').value = '';
@@ -566,34 +489,40 @@ class NexusApp {
 
     errorBox.style.display = 'none';
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Connecting...';
+    submitBtn.textContent = 'Connecting via Cloudflare...';
 
     try {
       if (this.authMode === 'signup') {
-        const res = await this.supabase.signUp(email, password);
-        if (res.user && !res.session) {
-          alert('確認メールを送信しました。メール内のリンクをクリックして認証を完了してください。');
-        }
-        this.showToast('Account created!');
+        await this.backend.signUp(email, password);
+        alert('確認メールを送信しました。認証後ログインしてください。');
+        this.switchAuthTab('login');
       } else {
-        await this.supabase.signIn(email, password);
+        await this.backend.login(email, password);
+        this.showToast(`Logged in as ${email}`);
+        this.store.logActivity('Auth', `ログイン成功: ${email}`);
+        await this.syncProjects();
+        this.closeAuthModal();
       }
-      this.closeAuthModal();
     } catch (err) {
       errorBox.textContent = err.message || '認証エラーが発生しました';
       errorBox.style.display = 'block';
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = this.authMode === 'login' ? 'Login' : 'Sign Up';
+      this.render();
     }
   }
 
   async handleLogout() {
     try {
-      await this.supabase.signOut();
+      await this.backend.logout();
+      this.store.cloudProjects = [];
+      this.showToast('Logged out');
+      this.store.logActivity('Auth', 'ログアウトしました');
     } catch (err) {
       this.showToast(`Logout error: ${err.message}`);
     }
+    this.render();
   }
 
   openCreateModal() {
@@ -624,12 +553,12 @@ class NexusApp {
       project_data: { type: studioType, files: [] }
     };
 
-    if (this.supabase.isAuthenticated()) {
+    if (this.backend.currentUser) {
       try {
-        const cloudItem = await this.supabase.createCloudProject(newProject);
+        const cloudItem = await this.backend.createProject(newProject);
         this.store.cloudProjects.unshift(cloudItem);
         this.store.setActiveProject(cloudItem.id);
-        this.store.logActivity('Supabase', `クラウドプロジェクト [${name}] をDBに登録しました。`);
+        this.store.logActivity('Cloudflare', `Worker経由でプロジェクト [${name}] を保存しました。`);
         this.showToast(`Cloud Project Created: ${name}`);
       } catch (err) {
         this.showToast(`Cloud保存失敗: ${err.message} (ローカルに保存します)`);
@@ -645,14 +574,15 @@ class NexusApp {
   }
 
   async handleSaveCurrentProject() {
-    const active = this.store.getActiveProject(this.supabase.isAuthenticated());
+    const isCloud = Boolean(this.backend.currentUser);
+    const active = this.store.getActiveProject(isCloud);
     if (!active) return;
 
-    if (this.supabase.isAuthenticated() && active.isCloud) {
+    if (isCloud && active.isCloud) {
       try {
-        await this.supabase.saveCloudProject(active);
-        this.showToast(`Project saved to Supabase: ${active.name}`);
-        this.store.logActivity('Supabase', `クラウド保存完了: ${active.name}`);
+        await this.backend.saveProject(active);
+        this.showToast(`Cloudflare経由で保存完了: ${active.name}`);
+        this.store.logActivity('Cloudflare', `プロジェクト更新完了: ${active.name}`);
       } catch (err) {
         this.showToast(`Save error: ${err.message}`);
       }
@@ -665,13 +595,13 @@ class NexusApp {
   async deleteProject(id) {
     if (!confirm('このプロジェクトを削除してもよろしいですか？')) return;
 
-    if (this.supabase.isAuthenticated()) {
+    if (this.backend.currentUser) {
       const target = this.store.cloudProjects.find(p => p.id === id);
       if (target && target.isCloud) {
         try {
-          await this.supabase.deleteCloudProject(id);
+          await this.backend.deleteProject(id);
           this.store.removeProject(id, true);
-          this.showToast('Supabaseからプロジェクトを削除しました');
+          this.showToast('プロジェクトを削除しました (Cloudflare)');
           this.render();
           return;
         } catch (err) {
@@ -682,14 +612,14 @@ class NexusApp {
     }
 
     this.store.removeProject(id, false);
-    this.showToast('プロジェクトを削除しました');
+    this.showToast('プロジェクトを削除しました (Local)');
     this.render();
   }
 
   promptCreateTask() {
     const title = prompt('タスクの内容を入力してください:');
     if (!title) return;
-    const active = this.store.getActiveProject(this.supabase.isAuthenticated());
+    const active = this.store.getActiveProject(Boolean(this.backend.currentUser));
     this.store.addTask({
       id: 'task_' + Date.now(),
       projectId: active ? active.id : null,
@@ -707,7 +637,6 @@ class NexusApp {
     if (!msg) return;
 
     const chatContainer = document.getElementById('chat-messages');
-    
     const userBubble = document.createElement('div');
     userBubble.className = 'chat-bubble user';
     userBubble.textContent = msg;
@@ -717,7 +646,7 @@ class NexusApp {
     const agentName = agentSelect.value.split(' ')[0];
     const typingBubble = document.createElement('div');
     typingBubble.className = 'chat-bubble agent';
-    typingBubble.textContent = `${agentName} is thinking...`;
+    typingBubble.textContent = `${agentName} is thinking via Worker Edge...`;
     chatContainer.appendChild(typingBubble);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 
@@ -732,7 +661,7 @@ class NexusApp {
           title: `Direct Instruction: ${msg.slice(0, 25)}`,
           agent: 'Qwen Developer',
           targetFile: 'src/main.js',
-          diffContent: `+ // Requested implementation: "${msg}"\n+ console.log("Nexus Worker dispatched via Cloudflare Edge");`
+          diffContent: `+ // Requested implementation: "${msg}"\n+ console.log("Nexus Worker Gateway Active");`
         });
         this.render();
       } else if (agentName === 'DeepSeek') {
@@ -825,7 +754,7 @@ class NexusApp {
   }
 
   render() {
-    const isCloud = this.supabase.isAuthenticated();
+    const isCloud = Boolean(this.backend.currentUser);
     const projects = this.store.getAllProjects(isCloud);
     const activeProject = this.store.getActiveProject(isCloud);
 
@@ -842,8 +771,8 @@ class NexusApp {
 
     document.getElementById('stat-proj-count').textContent = projects.length;
     document.getElementById('stat-pending-approvals').textContent = this.store.state.pendingApprovals.length;
-    document.getElementById('stat-cloud-mode').textContent = isCloud ? 'Supabase Sync' : (this.supabase.isConfigured() ? 'Supabase Ready' : 'LocalStorage');
-    document.getElementById('stat-cloud-mode').style.color = isCloud ? 'var(--accent-green)' : (this.supabase.isConfigured() ? 'var(--accent-cyan)' : 'var(--text-subtle)');
+    document.getElementById('stat-cloud-mode').textContent = isCloud ? 'Cloudflare Workers (Active)' : 'Cloudflare (Ready)';
+    document.getElementById('stat-cloud-mode').style.color = isCloud ? 'var(--accent-green)' : 'var(--accent-cyan)';
 
     const projGrid = document.getElementById('projects-grid');
     const recentContainer = document.getElementById('dash-recent-projects');
@@ -947,8 +876,7 @@ class NexusApp {
   }
 
   renderCloudStatus() {
-    const isConfigured = this.supabase.isConfigured();
-    const user = this.supabase.currentUser;
+    const user = this.backend.currentUser;
 
     if (user) {
       this.authActionsContainer.innerHTML = `
@@ -959,12 +887,10 @@ class NexusApp {
       document.getElementById('btn-logout').addEventListener('click', () => this.handleLogout());
 
       this.userDisplayEmail.textContent = user.email;
-      this.userSyncStatus.textContent = 'Supabase Connected';
+      this.userSyncStatus.textContent = 'Worker Session Active';
       this.userSyncStatus.style.color = 'var(--accent-green)';
       this.cloudStatusDot.className = 'status-dot cloud-connected';
-      this.cloudStatusText.textContent = 'Supabase Cloud Sync';
-      this.metricCloudSync.textContent = 'Active (RLS)';
-      this.metricCloudSync.style.color = 'var(--accent-green)';
+      this.cloudStatusText.textContent = 'Workers: nexus (Connected)';
     } else {
       this.authActionsContainer.innerHTML = `
         <button class="btn btn-primary btn-sm" id="btn-open-auth-modal">
@@ -974,12 +900,10 @@ class NexusApp {
       document.getElementById('btn-open-auth-modal').addEventListener('click', () => this.openAuthModal('login'));
 
       this.userDisplayEmail.textContent = 'Guest (Local)';
-      this.userSyncStatus.textContent = isConfigured ? 'Supabase Ready (Logged Out)' : 'Offline Storage';
+      this.userSyncStatus.textContent = 'Gateway Ready (Logged Out)';
       this.userSyncStatus.style.color = 'var(--text-subtle)';
-      this.cloudStatusDot.className = isConfigured ? 'status-dot cloud-offline' : 'status-dot';
-      this.cloudStatusText.textContent = isConfigured ? 'Auth Required' : 'Cloud Ready';
-      this.metricCloudSync.textContent = isConfigured ? 'Configured' : 'Disabled';
-      this.metricCloudSync.style.color = isConfigured ? 'var(--accent-cyan)' : 'var(--text-subtle)';
+      this.cloudStatusDot.className = 'status-dot';
+      this.cloudStatusText.textContent = 'Workers: nexus (Standby)';
     }
   }
 
@@ -1056,7 +980,7 @@ class NexusApp {
 
   selectProject(id) {
     this.store.setActiveProject(id);
-    const p = this.store.getActiveProject(this.supabase.isAuthenticated());
+    const p = this.store.getActiveProject(Boolean(this.backend.currentUser));
     this.showToast(`Active Project: ${p.name}`);
     this.switchView('workspace');
   }
