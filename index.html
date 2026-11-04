@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NEXUS — AI-Powered Development Platform</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Supabase CDN (ブラウザ直接動作) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase CDNは削除し、Cloudflare Workers APIのみと通信します -->
 </head>
 <body>
   <div id="nexus-app">
@@ -31,17 +30,17 @@
         <span class="active-project-badge" id="header-active-project">プロジェクト未選択</span>
         <div class="status-indicator">
           <span class="status-dot" id="cloud-status-dot"></span>
-          <span class="status-text" id="cloud-status-text">Cloudflare Edge Ready</span>
+          <span class="status-text" id="cloud-status-text">Cloudflare Workers: nexus</span>
         </div>
       </div>
 
       <div class="header-actions">
-        <!-- Supabase 接続設定ボタン -->
-        <button class="btn btn-secondary btn-sm" id="btn-open-config-modal" title="Supabase接続設定">
-          ⚙ Config
+        <!-- Backend API 設定確認ボタン -->
+        <button class="btn btn-secondary btn-sm" id="btn-open-config-modal" title="Backend接続状態">
+          ⚡ Gateway
         </button>
 
-        <!-- 認証ボタン（未ログイン時 / ログイン時で動的切り替え） -->
+        <!-- 認証ボタン -->
         <div id="auth-actions-container">
           <button class="btn btn-primary btn-sm" id="btn-open-auth-modal">
             🔑 Login / Sign Up
@@ -85,8 +84,8 @@
             </div>
           </div>
           <div class="system-metric">
-            <div class="metric-label">Cloud Sync</div>
-            <div class="metric-val" id="metric-cloud-sync">Disabled</div>
+            <div class="metric-label">Backend Gateway</div>
+            <div class="metric-val" id="metric-cloud-sync">nexus (CF)</div>
           </div>
         </div>
       </nav>
@@ -117,8 +116,8 @@
               <div class="stat-value text-accent" id="stat-pending-approvals">0</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">ストレージ同期</div>
-              <div class="stat-value" id="stat-cloud-mode" style="font-size:16px;">Local</div>
+              <div class="stat-label">バックエンド接続</div>
+              <div class="stat-value" id="stat-cloud-mode" style="font-size:16px;">Cloudflare</div>
             </div>
           </div>
 
@@ -314,7 +313,7 @@
               </div>
               <div class="chat-messages" id="chat-messages">
                 <div class="chat-bubble system">
-                  [SYSTEM] NEXUS CORE Agent Dispatcher Initialized. 必要な時だけモデルを呼び出します。
+                  [SYSTEM] NEXUS CORE Agent Dispatcher Initialized. Cloudflare Edge APIと連携中。
                 </div>
               </div>
               <form class="chat-input-bar" id="chat-form">
@@ -327,36 +326,32 @@
       </main>
     </div>
 
-    <!-- MODAL: SUPABASE CONFIG -->
+    <!-- MODAL: GATEWAY CONFIG -->
     <div class="modal-overlay" id="modal-supabase-config">
       <div class="modal-card">
         <div class="modal-header">
-          <h3>Supabase Connection Settings</h3>
+          <h3>Cloudflare Backend Gateway</h3>
           <button class="btn-close" id="btn-close-config-modal">✕</button>
         </div>
         <div class="modal-body">
-          <p class="modal-hint-text" id="cfg-hint-text">
-            Supabaseプロジェクトの接続情報を入力してください。<br>
-            ※ 公開鍵 (Publishable Key) のみブラウザに保存されます。Secret Keyは絶対に入力しないでください。
+          <p class="modal-hint-text">
+            NEXUSフロントエンドは Cloudflare Workers (`nexus`) 経由で安全に通信します。<br>
+            ブラウザ側にSupabaseのSecret Keyや直接認証情報は保持されません。
           </p>
           <div class="form-group">
-            <label for="cfg-supabase-url">Project URL</label>
-            <input type="url" id="cfg-supabase-url" class="form-input" placeholder="https://xyzcompany.supabase.co" required>
-          </div>
-          <div class="form-group">
-            <label for="cfg-supabase-key">Publishable API Key (sb_publishable_... または anon)</label>
-            <input type="password" id="cfg-supabase-key" class="form-input" placeholder="sb_publishable_... または eyJhbGciOi..." required>
+            <label for="cfg-api-url">Backend Gateway Base URL</label>
+            <input type="url" id="cfg-api-url" class="form-input" placeholder="https://nexus.liushengluntailang.workers.dev" required>
           </div>
           <div id="config-status-msg" class="status-msg-box" style="display:none;"></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="btn-clear-config">クリア</button>
-          <button class="btn btn-primary" id="btn-save-config">接続・保存</button>
+          <button class="btn btn-secondary" id="btn-test-gateway">疎通テスト (/api/health)</button>
+          <button class="btn btn-primary" id="btn-save-config">保存</button>
         </div>
       </div>
     </div>
 
-    <!-- MODAL: AUTH (Login / Sign Up) -->
+    <!-- MODAL: AUTH -->
     <div class="modal-overlay" id="modal-auth">
       <div class="modal-card modal-card-sm">
         <div class="modal-header">
@@ -459,7 +454,6 @@
     <div id="toast" class="toast"></div>
   </div>
 
-  <!-- 【要件4】app.js の直前に config.js を読み込む -->
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
