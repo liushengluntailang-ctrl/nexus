@@ -1,10 +1,10 @@
 /**
- * NEXUS PLATFORM — Native PlayCanvas Studio & Monaco IDE Hybrid Engine
+ * NEXUS PLATFORM — Native PlayCanvas Studio & Real Multi-Agent LLM Conference
  */
 
-const STORAGE_PROJECTS_KEY = 'nexus_projects_master_v4';
+const STORAGE_PROJECTS_KEY = 'nexus_projects_master_v5';
 
-// 初期デフォルトプロジェクト
+// 初期プロジェクト
 const DEFAULT_PROJECTS = [
   {
     id: 'proj_game_main',
@@ -26,7 +26,42 @@ const DEFAULT_PROJECTS = [
 ];
 
 // ==========================================
-// 1. PLAYCANVAS NATIVE ENGINE STUDIO
+// 1. 本物のLLM APIクライアント (Pollinations Open LLM)
+// ==========================================
+class RealAIClient {
+  static async chat(systemPrompt, userPrompt, model = 'openai') {
+    const url = 'https://text.pollinations.ai/';
+    const body = {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      model: model,
+      temperature: 0.7
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return text.trim();
+    } catch (e) {
+      console.warn(`[AI API Fallback to GET] ${e.message}`);
+      // GETフォールバック
+      const encoded = encodeURIComponent(`${systemPrompt}\n\nTask: ${userPrompt}`);
+      const getRes = await fetch(`https://text.pollinations.ai/${encoded}?model=${model}`);
+      return (await getRes.text()).trim();
+    }
+  }
+}
+
+// ==========================================
+// 2. PLAYCANVAS NATIVE ENGINE STUDIO
 // ==========================================
 class PlayCanvasNativeEngine {
   constructor(canvasId) {
@@ -37,7 +72,7 @@ class PlayCanvasNativeEngine {
     this.isPlaying = false;
 
     // Orbit Camera State
-    this.cameraDistance = 8;
+    this.cameraDistance = 9;
     this.cameraPitch = 25;
     this.cameraYaw = 45;
     this.cameraPivot = new pc.Vec3(0, 0.5, 0);
@@ -57,49 +92,40 @@ class PlayCanvasNativeEngine {
     try {
       this.app = new pc.Application(this.canvas, {
         mouse: new pc.Mouse(this.canvas),
-        touch: new pc.TouchDevice(this.canvas)
+        touch: new pc.TouchDevice(this.canvas),
+        keyboard: new pc.Keyboard(window)
       });
       this.app.start();
-
-      // キャンバスサイズの強制調整
       this.app.setCanvasFillMode(pc.FILLMODE_NONE);
       this.resize();
 
-      // 1. Orbit Camera
+      // Camera
       this.camera = new pc.Entity('Orbit Camera');
-      this.camera.addComponent('camera', {
-        clearColor: new pc.Color(0.08, 0.09, 0.11),
-        farClip: 1000
-      });
+      this.camera.addComponent('camera', { clearColor: new pc.Color(0.08, 0.09, 0.11), farClip: 1000 });
       this.app.root.addChild(this.camera);
       this.entities.push(this.camera);
       this.updateCameraTransform();
 
-      // 2. Directional Sun Light
+      // Sun Light
       const sun = new pc.Entity('Sun Light');
-      sun.addComponent('light', { type: 'directional', color: new pc.Color(1, 0.95, 0.9), intensity: 1.4 });
+      sun.addComponent('light', { type: 'directional', color: new pc.Color(1, 0.95, 0.9), intensity: 1.5 });
       sun.setEulerAngles(45, 30, 0);
       this.app.root.addChild(sun);
       this.entities.push(sun);
 
-      // 3. 3D Grid Floor (基準床)
+      // Grid Floor
       const floor = new pc.Entity('Grid Floor');
       floor.addComponent('render', { type: 'plane' });
-      floor.setLocalScale(20, 1, 20);
+      floor.setLocalScale(30, 1, 30);
       const floorMat = new pc.StandardMaterial();
-      floorMat.diffuse = new pc.Color(0.1, 0.12, 0.15);
-      floorMat.emissive = new pc.Color(0.02, 0.03, 0.04);
+      floorMat.diffuse = new pc.Color(0.1, 0.12, 0.16);
+      floorMat.emissive = new pc.Color(0.02, 0.03, 0.05);
       floorMat.update();
       floor.render.material = floorMat;
       this.app.root.addChild(floor);
       this.entities.push(floor);
 
-      // 4. Default Cyber Drone (PBR Model)
-      this.createDefaultDrone();
-
-      // リサイズハンドラ
       window.addEventListener('resize', () => this.resize());
-
       console.log('✔ PlayCanvas 3D Engine Successfully Running');
       this.renderHierarchy();
     } catch (e) {
@@ -115,50 +141,6 @@ class PlayCanvasNativeEngine {
       this.canvas.height = parent.clientHeight;
       this.app.resizeCanvas(parent.clientWidth, parent.clientHeight);
     }
-  }
-
-  createDefaultDrone() {
-    const drone = new pc.Entity('Cyber Drone');
-    drone.setPosition(0, 1, 0);
-
-    // Body
-    const body = new pc.Entity('Drone Body');
-    body.addComponent('render', { type: 'box' });
-    body.setLocalScale(1.4, 0.25, 0.9);
-    const bodyMat = new pc.StandardMaterial();
-    bodyMat.diffuse = new pc.Color(0.12, 0.16, 0.22);
-    bodyMat.metalness = 0.8;
-    bodyMat.roughness = 0.2;
-    bodyMat.update();
-    body.render.material = bodyMat;
-    drone.addChild(body);
-
-    // Core (Neon Blue)
-    const core = new pc.Entity('Power Core');
-    core.addComponent('render', { type: 'sphere' });
-    core.setLocalScale(0.45, 0.45, 0.45);
-    core.setLocalPosition(0, 0.2, 0);
-    const coreMat = new pc.StandardMaterial();
-    coreMat.diffuse = new pc.Color(0, 0.9, 1);
-    coreMat.emissive = new pc.Color(0, 0.9, 1);
-    coreMat.update();
-    core.render.material = coreMat;
-    drone.addChild(core);
-
-    this.app.root.addChild(drone);
-    this.entities.push(drone);
-
-    // 浮遊アニメーション
-    let time = 0;
-    this.app.on('update', (dt) => {
-      if (this.isPlaying && drone) {
-        time += dt * 3;
-        drone.setPosition(0, 1 + Math.sin(time) * 0.2, 0);
-        drone.rotate(0, 30 * dt, 0);
-      }
-    });
-
-    this.selectEntity(this.entities.indexOf(drone));
   }
 
   setupOrbitControls() {
@@ -189,8 +171,10 @@ class PlayCanvasNativeEngine {
         this.updateCameraTransform();
       } else if (this.isDraggingRight) {
         const panSpeed = 0.005 * this.cameraDistance;
-        this.cameraPivot.add(this.camera.right.clone().mulScalar(-dx * panSpeed));
-        this.cameraPivot.add(this.camera.up.clone().mulScalar(dy * panSpeed));
+        const right = this.camera.right;
+        const up = this.camera.up;
+        this.cameraPivot.add(right.clone().mulScalar(-dx * panSpeed));
+        this.cameraPivot.add(up.clone().mulScalar(dy * panSpeed));
         this.updateCameraTransform();
       }
     });
@@ -214,7 +198,7 @@ class PlayCanvasNativeEngine {
   }
 
   resetCamera() {
-    this.cameraDistance = 8;
+    this.cameraDistance = 9;
     this.cameraPitch = 25;
     this.cameraYaw = 45;
     this.cameraPivot.set(0, 0.5, 0);
@@ -380,7 +364,7 @@ class PlayCanvasNativeEngine {
 }
 
 // ==========================================
-// 2. MONACO APP STUDIO (Web IDE)
+// 3. MONACO APP STUDIO (Web IDE)
 // ==========================================
 class MonacoAppStudio {
   constructor(containerId, iframeId) {
@@ -467,7 +451,7 @@ class MonacoAppStudio {
 }
 
 // ==========================================
-// 3. AI MULTI-AGENT CONFERENCE SYSTEM
+// 4. REAL AUTONOMOUS MULTI-AGENT CONFERENCE (本物のLLM自律連鎖)
 // ==========================================
 class AIConferenceSystem {
   constructor(platform) {
@@ -481,88 +465,169 @@ class AIConferenceSystem {
 
     this.appendBubble('user', 'Human Supervisor', goal);
 
-    // 1. Llama
-    await this.step(1000, 'llama', 'Llama (Architect)', 
-      `要求「${goal}」を分析。PlayCanvas Engine用にEntityと物理スクリプト構成を分解しました。Qwen、コード生成をお願いします。`
-    );
-
-    // 2. Qwen
-    const code = `// [PlayCanvas Generated Script]
-const drone = new pc.Entity('AI_Drone');
-drone.addComponent('render', { type: 'capsule' });
-drone.setLocalScale(1, 0.3, 1);
-drone.setPosition(0, 1.8, 0);
-
-const mat = new pc.StandardMaterial();
-mat.diffuse = new pc.Color(0, 0.9, 1);
-mat.emissive = new pc.Color(0, 0.4, 0.6);
-mat.update();
-drone.render.material = mat;
-
-app.root.addChild(drone);
-
-let t = 0;
-app.on('update', (dt) => {
-  t += dt * 3;
-  drone.setPosition(Math.sin(t * 0.8) * 1.5, 1.8 + Math.sin(t * 2.5) * 0.3, 0);
-  drone.rotate(0, 45 * dt, 0);
-});`;
-
-    await this.step(1400, 'qwen', 'Qwen (Developer)', 
-      `PlayCanvas 3Dコードを実装しました：\n\`\`\`javascript\n${code}\n\`\`\`\nDeepSeek、レビューをお願いします。`
-    );
-
-    // 3. DeepSeek
-    await this.step(1200, 'deepseek', 'DeepSeek (Reviewer)', 
-      `コード監査完了。dt乗算漏れなし、WebGL負荷極小。承認を推薦します。GLM、テスト実行してください。`
-    );
-
-    // 4. GLM
-    await this.step(1000, 'glm', 'GLM (Tester)', 
-      `シェーダーコンパイル＆実行テスト合格。合意形成完了。承認ゲート（Approval Gate）に提出します。`
-    );
-
-    this.isConferencing = false;
-
-    // 承認ゲート
-    this.platform.openGate(`AI Conference Agreement: ${goal}`, code, () => {
-      this.injectToStudio(code);
-    });
-  }
-
-  injectToStudio(scriptStr) {
     try {
-      const executeFn = new Function('app', 'pc', scriptStr);
-      executeFn(window.gameStudio.app, pc);
-      window.gameStudio.renderHierarchy();
-      this.platform.switchView('workspace');
-      this.platform.showToast('AI Generated Entity Running in PlayCanvas!');
-    } catch (e) {
-      this.platform.showToast(`Error: ${e.message}`);
+      // ----------------------------------------------------
+      // STEP 1: Llama (Architect) — 企画・ゲーム設計
+      // ----------------------------------------------------
+      this.appendTyping('llama', 'Llama (Architect) がゲーム仕様をリアルタイム思考中...');
+      const llamaPrompt = `あなたはPlayCanvas 3Dゲームのリードアーキテクト「Llama」です。
+ユーザーのゲーム開発要求：「${goal}」
+
+以下の構成で企画・要件を分解してください：
+1. 3Dゲーム概要とルール（キーボード操作: WASDまたは矢印キーで移動など、実際に遊べる要素）
+2. 配置するEntity（プレイヤー、敵、障害物、コインなど）
+3. 必要なアニメーションやスクリプト挙動
+Qwen Developerへ実装を具体的に依頼する文面で締めてください。`;
+
+      const llamaResponse = await RealAIClient.chat(
+        'You are Llama, an expert 3D game designer and architect for PlayCanvas Engine. Respond in Japanese.',
+        llamaPrompt,
+        'mistral'
+      );
+      this.removeTyping();
+      this.appendBubble('llama', 'Llama (Architect)', llamaResponse);
+
+      // ----------------------------------------------------
+      // STEP 2: Qwen (Developer) — PlayCanvasコードの自律生成
+      // ----------------------------------------------------
+      this.appendTyping('qwen', 'Qwen (Developer) がPlayCanvasコードをゼロから生成中...');
+      const qwenPrompt = `あなたはPlayCanvasのシニアエンジニア「Qwen」です。
+直前のLlama Architectによる企画設計：
+"""
+${llamaResponse}
+"""
+
+この設計をPlayCanvas Engine (v1.65 / v1.70) で動作する実行可能JavaScriptとして実装してください。
+【絶対厳守ルール】：
+- 引数として渡される \`app\` と \`pc\` を直接使用してください。
+- プレイヤーEntityを作成し、キーボード（\`app.keyboard.isPressed(pc.KEY_A)\` 等、またはWASD/矢印キー）でリアルタイムに移動または回転できるようにしてください。
+- ターゲットや敵Entity、ライティング、マテリアル色を配置してください。
+- \`app.on('update', function(dt) { ... })\` を使用してゲームループを動かしてください。
+- コードは必ず \`\`\`javascript ... \`\`\` で囲んで出力してください。説明文は短くしてください。`;
+
+      const qwenResponse = await RealAIClient.chat(
+        'You are Qwen, a senior PlayCanvas 3D game developer. Output high quality PlayCanvas code.',
+        qwenPrompt,
+        'deepseek'
+      );
+      this.removeTyping();
+      this.appendBubble('qwen', 'Qwen (Developer)', qwenResponse);
+
+      // コードブロックの抽出
+      const codeMatch = qwenResponse.match(/```(?:javascript|js)?([\s\S]*?)```/);
+      let extractedCode = codeMatch ? codeMatch[1].trim() : qwenResponse;
+
+      // ----------------------------------------------------
+      // STEP 3: DeepSeek (Reviewer) — コードの自律監査・修正
+      // ----------------------------------------------------
+      this.appendTyping('deepseek', 'DeepSeek (Reviewer) がコードの安全性とFPS安定性を監査中...');
+      const deepseekPrompt = `あなたはコードレビュー専門AI「DeepSeek」です。
+Qwenが生成したPlayCanvasコード：
+"""
+${extractedCode}
+"""
+
+このコードを監査し：
+1. 構文エラーや未定義変数がないか
+2. \`dt\`（デルタタイム）が速度に乗算されFPS非依存になっているか
+3. 実行時のバグがないか
+を検査し、安全で確実に動く完全な修正後コードを \`\`\`javascript ... \`\`\` に出力してください。`;
+
+      const deepseekResponse = await RealAIClient.chat(
+        'You are DeepSeek, an elite code reviewer for WebGL and 3D Game Engines.',
+        deepseekPrompt,
+        'deepseek'
+      );
+      this.removeTyping();
+      this.appendBubble('deepseek', 'DeepSeek (Reviewer)', deepseekResponse);
+
+      const reviewedMatch = deepseekResponse.match(/```(?:javascript|js)?([\s\S]*?)```/);
+      if (reviewedMatch) {
+        extractedCode = reviewedMatch[1].trim();
+      }
+
+      // ----------------------------------------------------
+      // STEP 4: GLM (Tester) — 最終テスト
+      // ----------------------------------------------------
+      this.appendTyping('glm', 'GLM (Tester) が実行テストを実施中...');
+      const glmResponse = await RealAIClient.chat(
+        'You are GLM, a QA Tester for WebGL Games. Respond in Japanese.',
+        `以下のPlayCanvasコードの品質判定を行ってください：\n${extractedCode.slice(0, 300)}...\n結果（構文チェック、操作性、負荷）を短く報告してください。`,
+        'openai'
+      );
+      this.removeTyping();
+      this.appendBubble('glm', 'GLM (Tester)', glmResponse);
+
+      this.isConferencing = false;
+
+      // 人間の承認ゲート（Approval Gate）に提出
+      this.platform.openGate(
+        `AI Conference Agreement: ${goal}`,
+        extractedCode,
+        () => {
+          this.injectToPlayCanvas(extractedCode);
+        }
+      );
+
+    } catch (err) {
+      this.removeTyping();
+      this.appendBubble('system', 'System Error', `AI通信エラー: ${err.message}`);
+      this.isConferencing = false;
     }
   }
 
-  step(delay, agentId, agentName, msg) {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        this.appendBubble(agentId, agentName, msg);
-        resolve();
-      }, delay);
-    });
+  injectToPlayCanvas(scriptStr) {
+    try {
+      const app = window.gameStudio.app;
+      // 不要なMarkdownクォート等を除去
+      const cleanCode = scriptStr.replace(/```(?:javascript|js)?/g, '').replace(/```/g, '').trim();
+
+      // PlayCanvasコンテキストで動的実行
+      const executeFn = new Function('app', 'pc', cleanCode);
+      executeFn(app, pc);
+
+      window.gameStudio.renderHierarchy();
+      this.platform.switchView('workspace');
+      this.platform.showToast('AI Generated Game Elements Running in PlayCanvas!');
+    } catch (e) {
+      console.error('PlayCanvas Injection Error:', e);
+      this.platform.showToast(`Script Execution Error: ${e.message}`);
+    }
+  }
+
+  appendTyping(agentId, text) {
+    const stream = document.getElementById('conf-messages');
+    const typing = document.createElement('div');
+    typing.id = 'conf-typing-indicator';
+    typing.className = `conf-bubble ${agentId}`;
+    typing.innerHTML = `<em>⚡ ${text}</em>`;
+    stream.appendChild(typing);
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  removeTyping() {
+    const typing = document.getElementById('conf-typing-indicator');
+    if (typing) typing.remove();
   }
 
   appendBubble(type, sender, text) {
     const stream = document.getElementById('conf-messages');
     const bubble = document.createElement('div');
     bubble.className = `conf-bubble ${type}`;
-    bubble.innerHTML = `<strong>${sender}</strong><br>${text.replace(/\n/g, '<br>')}`;
+    
+    // コードブロックの装飾
+    const formatted = text
+      .replace(/\n/g, '<br>')
+      .replace(/```(?:javascript|js)?([\s\S]*?)```/g, '<pre class="diff-viewer" style="margin:6px 0; color:#00ffaa;">$1</pre>');
+
+    bubble.innerHTML = `<strong>${sender}</strong><br>${formatted}`;
     stream.appendChild(bubble);
     stream.scrollTop = stream.scrollHeight;
   }
 }
 
 // ==========================================
-// 4. MAIN NEXUS PLATFORM ORCHESTRATOR
+// 5. MAIN NEXUS PLATFORM ORCHESTRATOR
 // ==========================================
 class NexusPlatform {
   constructor() {
@@ -610,7 +675,7 @@ class NexusPlatform {
     document.getElementById('btn-add-sphere').addEventListener('click', () => window.gameStudio.addPrimitive('sphere', 'Sphere'));
     document.getElementById('btn-add-light').addEventListener('click', () => {
       const l = new pc.Entity('Point Light');
-      l.addComponent('light', { type: 'omni', color: new pc.Color(0, 1, 0.8), range: 12 });
+      l.addComponent('light', { type: 'omni', color: new pc.Color(0, 1, 0.8), range: 14 });
       l.setPosition(0, 3, 0);
       window.gameStudio.app.root.addChild(l);
       window.gameStudio.entities.push(l);
