@@ -6,10 +6,9 @@
   <title>NEXUS — AI-Powered Development Platform</title>
   <link rel="stylesheet" href="style.css">
 
-  <!-- 1. PlayCanvas Engine CDN (GAME STUDIO用) -->
+  <!-- PlayCanvas Engine (Official Open Source WebGL/WebGPU Runtime) -->
   <script src="https://code.playcanvas.com/playcanvas-stable.min.js"></script>
-
-  <!-- 2. Monaco Editor Loader CDN (APP STUDIO用) -->
+  <!-- Monaco Editor Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 </head>
 <body>
@@ -18,177 +17,213 @@
     <header class="nexus-header">
       <div class="brand">
         <div class="brand-logo">
-          <svg viewBox="0 0 32 32" width="24" height="24">
+          <svg viewBox="0 0 32 32" width="22" height="22">
             <polygon points="16,2 30,9 30,23 16,30 2,23 2,9" fill="none" stroke="#00f3ff" stroke-width="2"/>
-            <circle cx="16" cy="16" r="4" fill="#00f3ff" class="brand-core"/>
-            <line x1="16" y1="2" x2="16" y2="12" stroke="#00f3ff" stroke-width="1.5"/>
-            <line x1="16" y1="20" x2="16" y2="30" stroke="#00f3ff" stroke-width="1.5"/>
-            <line x1="2" y1="9" x2="11" y2="14" stroke="#00f3ff" stroke-width="1.5"/>
-            <line x1="21" y1="18" x2="30" y2="23" stroke="#00f3ff" stroke-width="1.5"/>
+            <circle cx="16" cy="16" r="4" fill="#00f3ff"/>
           </svg>
         </div>
         <span class="brand-name">NEXUS</span>
-        <span class="brand-tag">STUDIO HYBRID</span>
+        <span class="brand-tag">PLAYCANVAS ENGINE v2</span>
       </div>
 
       <div class="header-status">
-        <span class="active-project-badge" id="header-active-project">プロジェクト未選択</span>
+        <span class="active-project-badge" id="header-active-project">Cyber Arena 3D</span>
         <div class="status-indicator">
           <span class="status-dot"></span>
-          <span class="status-text" id="engine-status-text">Engine Ready</span>
+          <span class="status-text" id="engine-fps">PlayCanvas Active</span>
         </div>
       </div>
 
       <div class="header-actions">
-        <button class="btn btn-primary btn-sm" id="btn-quick-new-proj">+ New Project</button>
-        <button class="btn btn-danger-subtle btn-sm" id="btn-emergency-stop">⏹ STOP AGENTS</button>
+        <!-- AI会議の即時起動ボタン -->
+        <button class="btn btn-ai-confer btn-sm" id="btn-trigger-ai-confer">
+          ⚡ AIカンファレンス開催 (AI自動会議)
+        </button>
+        <button class="btn btn-secondary btn-sm" id="btn-quick-new-proj">+ New Project</button>
       </div>
     </header>
 
-    <!-- BODY LAYOUT -->
+    <!-- BODY -->
     <div class="nexus-body">
       <!-- SIDEBAR -->
       <nav class="nexus-sidebar">
         <div class="nav-group">
-          <button class="nav-item active" data-view="dashboard">
-            <span class="nav-icon">⬚</span> Dashboard
+          <button class="nav-item active" data-view="workspace">
+            <span class="nav-icon">🎮</span> Game Studio
           </button>
-          <button class="nav-item" data-view="workspace">
-            <span class="nav-icon">⚡</span> Studio Workspace
+          <button class="nav-item" data-view="conference">
+            <span class="nav-icon">💬</span> AI Conference
+          </button>
+          <button class="nav-item" data-view="dashboard">
+            <span class="nav-icon">⬚</span> Dashboard
           </button>
           <button class="nav-item" data-view="projects">
             <span class="nav-icon">📁</span> Projects
-          </button>
-          <button class="nav-item" data-view="tasks">
-            <span class="nav-icon">▦</span> Task Board
-          </button>
-          <button class="nav-item" data-view="agents">
-            <span class="nav-icon">🤖</span> AI Team & Logs
           </button>
         </div>
 
         <div class="sidebar-footer">
           <div class="system-metric">
-            <div class="metric-label">Runtime Engine</div>
-            <div class="metric-val" id="metric-runtime">PlayCanvas + Monaco</div>
+            <div class="metric-label">3D Engine</div>
+            <div class="metric-val" style="color:var(--accent-orange);">PlayCanvas Native</div>
           </div>
         </div>
       </nav>
 
       <!-- CONTENT -->
       <main class="nexus-content">
-        <!-- VIEW: DASHBOARD -->
-        <section id="view-dashboard" class="nexus-view active">
-          <div class="view-header">
-            <div>
-              <h1 class="view-title">Command Center</h1>
-              <p class="view-desc">AIエージェントと人間が共同でゲーム・アプリを開発するスタジオです。</p>
-            </div>
-          </div>
-
-          <div class="grid-stats">
-            <div class="stat-card">
-              <div class="stat-label">プロジェクト</div>
-              <div class="stat-value" id="stat-proj-count">0</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">3D Engine</div>
-              <div class="stat-value text-accent" style="font-size:16px;">PlayCanvas WebGL</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Code Editor</div>
-              <div class="stat-value" style="font-size:16px; color:var(--accent-cyan);">Monaco IDE</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">承認待ち (Gate)</div>
-              <div class="stat-value text-accent" id="stat-pending-approvals">0</div>
-            </div>
-          </div>
-
-          <div class="dash-columns">
-            <div class="panel">
-              <div class="panel-header">
-                <h3>スタジオ一覧（クリックで起動）</h3>
-              </div>
-              <div class="panel-body">
-                <div id="dash-recent-projects" class="project-list-compact"></div>
-              </div>
-            </div>
-
-            <div class="panel">
-              <div class="panel-header">
-                <h3>AI Agent Activity Log</h3>
-              </div>
-              <div class="panel-body">
-                <div id="dash-activity-log" class="log-stream"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- VIEW: WORKSPACE (GAME STUDIO / APP STUDIO) -->
-        <section id="view-workspace" class="nexus-view">
+        <!-- VIEW: WORKSPACE (GAME STUDIO) -->
+        <section id="view-workspace" class="nexus-view active">
           <div class="workspace-toolbar">
             <div class="workspace-info">
-              <span class="badge" id="workspace-type-badge">STUDIO</span>
-              <span id="workspace-title" style="font-weight:600; font-size:14px;">Project</span>
+              <span class="badge badge-game" id="workspace-type-badge">PLAYCANVAS 3D</span>
+              <span id="workspace-title" style="font-weight:600; font-size:13px;">Cyber Arena 3D</span>
             </div>
+
             <div class="workspace-controls" id="workspace-controls-game">
-              <button class="btn btn-secondary btn-sm" id="btn-add-cube">+ Cube</button>
-              <button class="btn btn-secondary btn-sm" id="btn-add-sphere">+ Sphere</button>
-              <button class="btn btn-secondary btn-sm" id="btn-add-light">+ Light</button>
-              <button class="btn btn-primary btn-sm" id="btn-toggle-play">▶ Play Game</button>
+              <div class="btn-group">
+                <button class="btn btn-secondary btn-xs" id="camera-reset">🎥 Reset Cam</button>
+                <button class="btn btn-secondary btn-xs" id="btn-add-cube">+ Box</button>
+                <button class="btn btn-secondary btn-xs" id="btn-add-sphere">+ Sphere</button>
+                <button class="btn btn-secondary btn-xs" id="btn-add-light">+ Light</button>
+              </div>
+              <button class="btn btn-play btn-xs" id="btn-toggle-play">
+                <span id="play-icon">▶</span> <span id="play-text">PLAY GAME</span>
+              </button>
             </div>
+
             <div class="workspace-controls" id="workspace-controls-app" style="display:none;">
-              <button class="btn btn-secondary btn-sm" id="btn-format-code">Format</button>
-              <button class="btn btn-primary btn-sm" id="btn-run-code">▶ Refresh Preview</button>
+              <button class="btn btn-primary btn-xs" id="btn-run-code">▶ Run Sandbox</button>
             </div>
           </div>
 
-          <!-- A. GAME STUDIO INTERFACE -->
+          <!-- A. PLAYCANVAS 3D STUDIO -->
           <div id="studio-game-container" class="studio-split-layout">
-            <!-- Hierarchy (左) -->
-            <div class="studio-sidebar-panel">
-              <div class="panel-sub-header">Hierarchy</div>
+            <!-- 1. Hierarchy (左) -->
+            <div class="studio-sidebar-panel" style="width:220px;">
+              <div class="panel-sub-header">
+                <span>Scene Hierarchy</span>
+                <span class="badge" id="hierarchy-count">0</span>
+              </div>
               <div id="game-hierarchy-list" class="tree-list"></div>
             </div>
 
-            <!-- 3D Viewport (中央) -->
-            <div class="studio-center-panel">
+            <!-- 2. 3D Viewport (中央) -->
+            <div class="studio-center-panel" id="viewport-drop-zone">
               <canvas id="playcanvas-canvas"></canvas>
-              <div class="viewport-overlay-tag">PLAYCANVAS 3D VIEWPORT</div>
+              <div class="viewport-overlay-tag">
+                PLAYCANVAS 3D [左ドラッグ: 回転 | 右ドラッグ: 平行移動 | ホイール: ズーム | GLBドラッグ＆ドロップ対応]
+              </div>
+
+              <!-- 下部アセットドック -->
+              <div class="studio-bottom-dock">
+                <div class="dock-tabs">
+                  <span class="dock-tab active">Asset Browser</span>
+                  <span class="dock-tab" onclick="window.nexusApp.switchView('conference')">AI Conference Stream</span>
+                </div>
+                <div class="dock-content">
+                  <div class="asset-item">📦 Drone_Player.glb</div>
+                  <div class="asset-item">🎨 Cyber_Neon.mat</div>
+                  <div class="asset-item">⚡ DroneHover.js</div>
+                  <label class="asset-item file-upload-label" style="cursor:pointer; border-style:dashed;">
+                    📁 PCからGLB読込
+                    <input type="file" id="glb-file-input" accept=".glb,.gltf" style="display:none;">
+                  </label>
+                  <div class="asset-item" style="color:var(--accent-cyan); cursor:pointer;" onclick="window.nexusApp.startAIConference('サイバーパンクの浮遊タレットを3Dシーンに生成して')">
+                    ✨ AIに3Dモデル生成を依頼
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <!-- Inspector (右) -->
-            <div class="studio-sidebar-panel">
-              <div class="panel-sub-header">Inspector</div>
+            <!-- 3. Inspector (右) -->
+            <div class="studio-sidebar-panel" style="width:260px;">
+              <div class="panel-sub-header">Entity Inspector</div>
               <div id="game-inspector-body" class="inspector-content">
                 <div class="empty-state">オブジェクトを選択してください</div>
               </div>
             </div>
           </div>
 
-          <!-- B. APP STUDIO INTERFACE -->
+          <!-- B. MONACO APP STUDIO -->
           <div id="studio-app-container" class="studio-split-layout" style="display:none;">
-            <!-- File Explorer (左) -->
             <div class="studio-sidebar-panel" style="width:180px;">
-              <div class="panel-sub-header">Explorer</div>
+              <div class="panel-sub-header">Files</div>
               <div class="file-tree" id="app-file-tree">
                 <div class="file-item active" data-file="index.html">📄 index.html</div>
                 <div class="file-item" data-file="style.css">🎨 style.css</div>
                 <div class="file-item" data-file="main.js">⚡ main.js</div>
               </div>
             </div>
+            <div class="studio-center-panel">
+              <div id="monaco-editor-container" style="width:100%; height:100%;"></div>
+            </div>
+            <div class="studio-sidebar-panel" style="width:40%;">
+              <div class="panel-sub-header">Live Preview</div>
+              <iframe id="app-preview-frame" sandbox="allow-scripts allow-modals" style="width:100%; height:100%; border:none; background:#fff;"></iframe>
+            </div>
+          </div>
+        </section>
 
-            <!-- Monaco Editor (中央) -->
-            <div class="studio-center-panel" style="position:relative;">
-              <div id="monaco-editor-container"></div>
+        <!-- VIEW: AI CONFERENCE (AI同士の自動会議室) -->
+        <section id="view-conference" class="nexus-view">
+          <div class="view-header">
+            <div>
+              <h1 class="view-title">NEXUS AI Conference Room (自律合議システム)</h1>
+              <p class="view-desc">4体の特化AIが相互に要件定義・実装・コードレビュー・テストを行い合意形成します。</p>
+            </div>
+            <div class="conference-status-badge" id="conf-status-badge">Standby</div>
+          </div>
+
+          <div class="conference-layout">
+            <!-- 参加エージェント4体 -->
+            <div class="conference-roster">
+              <div class="conf-agent-card" id="card-llama">
+                <div class="conf-agent-avatar llama">L</div>
+                <div><strong>Llama</strong> Architect<div class="conf-agent-role">企画・システム設計</div></div>
+              </div>
+              <div class="conf-agent-card" id="card-qwen">
+                <div class="conf-agent-avatar qwen">Q</div>
+                <div><strong>Qwen</strong> Developer<div class="conf-agent-role">PlayCanvas実装</div></div>
+              </div>
+              <div class="conf-agent-card" id="card-deepseek">
+                <div class="conf-agent-avatar deepseek">D</div>
+                <div><strong>DeepSeek</strong> Reviewer<div class="conf-agent-role">コード監査・修正</div></div>
+              </div>
+              <div class="conf-agent-card" id="card-glm">
+                <div class="conf-agent-avatar glm">G</div>
+                <div><strong>GLM</strong> Tester<div class="conf-agent-role">動作テスト・品質保証</div></div>
+              </div>
             </div>
 
-            <!-- Live Preview (右) -->
-            <div class="studio-sidebar-panel" style="width:40%;">
-              <div class="panel-sub-header">Live Sandbox Preview</div>
-              <iframe id="app-preview-frame" sandbox="allow-scripts allow-modals"></iframe>
+            <!-- 会議発言ストリーム -->
+            <div class="conference-stream-panel">
+              <div class="conf-messages" id="conf-messages">
+                <div class="chat-bubble system">
+                  [CONFERENCE INITIALIZED] 指示を入力すると、4体のAIが相互に議論・レビューを開始します。
+                </div>
+              </div>
+
+              <!-- 指示出しフォーム -->
+              <form class="conf-input-bar" id="conf-form">
+                <input type="text" id="conf-input" placeholder="AIチームへの開発課題 (例: '自律浮遊するネオンドローンをPlayCanvasに実装して')" required>
+                <button type="submit" class="btn btn-primary" id="btn-send-conf">会議開始</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- VIEW: DASHBOARD -->
+        <section id="view-dashboard" class="nexus-view">
+          <div class="view-header"><div><h1 class="view-title">Command Center</h1></div></div>
+          <div class="dash-columns">
+            <div class="panel">
+              <div class="panel-header"><h3>スタジオ一覧</h3></div>
+              <div class="panel-body"><div id="dash-recent-projects" class="project-list-compact"></div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><h3>Agent Activity Log</h3></div>
+              <div class="panel-body"><div id="dash-activity-log" class="log-stream"></div></div>
             </div>
           </div>
         </section>
@@ -196,76 +231,10 @@
         <!-- VIEW: PROJECTS -->
         <section id="view-projects" class="nexus-view">
           <div class="view-header">
-            <div>
-              <h1 class="view-title">Project Manager</h1>
-              <p class="view-desc">作成済みプロジェクトの切替・新規作成。</p>
-            </div>
+            <div><h1 class="view-title">Project Manager</h1></div>
             <button class="btn btn-primary" id="btn-open-create-modal">+ プロジェクト作成</button>
           </div>
           <div id="projects-grid" class="projects-grid"></div>
-        </section>
-
-        <!-- VIEW: TASK BOARD -->
-        <section id="view-tasks" class="nexus-view">
-          <div class="view-header">
-            <div>
-              <h1 class="view-title">Human-AI Task Board</h1>
-              <p class="view-desc">人間が承認ゲート（Approval Gate）で変更を検査します。</p>
-            </div>
-            <button class="btn btn-primary btn-sm" id="btn-add-task">+ タスク作成</button>
-          </div>
-          <div class="kanban-board">
-            <div class="kanban-col"><div class="kanban-col-header">Backlog</div><div class="kanban-cards" id="col-backlog"></div></div>
-            <div class="kanban-col"><div class="kanban-col-header">In Progress</div><div class="kanban-cards" id="col-in_progress"></div></div>
-            <div class="kanban-col"><div class="kanban-col-header">Review / Gate (要承認)</div><div class="kanban-cards" id="col-review"></div></div>
-            <div class="kanban-col"><div class="kanban-col-header">Done</div><div class="kanban-cards" id="col-done"></div></div>
-          </div>
-        </section>
-
-        <!-- VIEW: AGENTS & AI CHAT -->
-        <section id="view-agents" class="nexus-view">
-          <div class="view-header">
-            <div>
-              <h1 class="view-title">NEXUS AI Team</h1>
-              <p class="view-desc">AIエージェントにコード作成・3Dシーン変更を指示します。</p>
-            </div>
-          </div>
-
-          <div class="agents-layout">
-            <div class="agents-roster">
-              <div class="agent-card">
-                <div class="agent-avatar qwen">Q</div>
-                <div><strong>Qwen</strong> Developer<div class="agent-model">Full-Stack & Scripts</div></div>
-              </div>
-              <div class="agent-card">
-                <div class="agent-avatar llama">L</div>
-                <div><strong>Llama</strong> Architect<div class="agent-model">3D Scene & Systems</div></div>
-              </div>
-              <div class="agent-card">
-                <div class="agent-avatar deepseek">D</div>
-                <div><strong>DeepSeek</strong> Reviewer<div class="agent-model">Quality & Security</div></div>
-              </div>
-            </div>
-
-            <div class="agent-chat-panel">
-              <div class="chat-header">
-                <span>AI Studio Commander</span>
-                <select id="chat-agent-select" class="form-select-sm">
-                  <option value="Qwen">Qwen (Developer)</option>
-                  <option value="Llama">Llama (Architect)</option>
-                </select>
-              </div>
-              <div class="chat-messages" id="chat-messages">
-                <div class="chat-bubble system">
-                  [SYSTEM] NEXUS AI Studio Ready. GAME STUDIOでは3Dオブジェクト追加、APP STUDIOではHTML/JS生成を直接指示できます。
-                </div>
-              </div>
-              <form class="chat-input-bar" id="chat-form">
-                <input type="text" id="chat-input" placeholder="例: '3Dシーンに赤いキューブを追加して' または 'ネオンのカウンターボタンを作って'" required>
-                <button type="submit" class="btn btn-primary">送信</button>
-              </form>
-            </div>
-          </div>
         </section>
       </main>
     </div>
@@ -280,25 +249,25 @@
         <div class="modal-body">
           <div class="form-group">
             <label>プロジェクト名</label>
-            <input type="text" id="proj-name" class="form-input" placeholder="my-awesome-nexus" required>
+            <input type="text" id="proj-name" class="form-input" placeholder="cyber-arena-game" required>
           </div>
           <div class="form-group">
-            <label>Studio 環境を選択</label>
+            <label>Studio 環境</label>
             <div class="studio-select-grid">
               <label class="studio-option active">
                 <input type="radio" name="studio-type" value="GAME" checked>
                 <div class="studio-box">
                   <div class="studio-box-icon">🎮</div>
-                  <div class="studio-box-title">GAME STUDIO</div>
-                  <div class="studio-box-desc">PlayCanvas 3D Engine。3Dシーン編集、オブジェクト配置、ゲーム開発。</div>
+                  <div class="studio-box-title">PLAYCANVAS 3D</div>
+                  <div class="studio-box-desc">3Dオービットカメラ、PBRライティング、Hierarchy、Inspector。</div>
                 </div>
               </label>
               <label class="studio-option">
                 <input type="radio" name="studio-type" value="APP">
                 <div class="studio-box">
                   <div class="studio-box-icon">💻</div>
-                  <div class="studio-box-title">APP STUDIO</div>
-                  <div class="studio-box-desc">Monaco Editor IDE。Webフロントエンド、HTML/CSS/JSライブプレビュー。</div>
+                  <div class="studio-box-title">MONACO IDE</div>
+                  <div class="studio-box-desc">HTML/CSS/JSライブプレビュー。</div>
                 </div>
               </label>
             </div>
@@ -316,19 +285,22 @@
       <div class="modal-card modal-card-gate">
         <div class="modal-header gate-header">
           <div>
-            <span class="gate-warning-badge">APPROVAL REQUIRED</span>
-            <h3 id="gate-action-title">AI変更提案の承認</h3>
+            <span class="gate-warning-badge">AI CONFERENCE AGREEMENT (承認待ち)</span>
+            <h3 id="gate-action-title">AI会議による変更合意の承認</h3>
           </div>
         </div>
         <div class="modal-body">
           <div class="diff-viewer">
-            <div class="diff-header" id="gate-target-file">Target: Studio Workspace</div>
+            <div class="diff-header" id="gate-target-file">Target: PlayCanvas 3D Engine</div>
             <pre class="diff-body" id="gate-diff-content"></pre>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:8px;" id="gate-confer-summary">
+            4体のAI（Llama, Qwen, DeepSeek, GLM）によるレビューとテストをパスしました。
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="gate-btn-reject">Reject (却下)</button>
-          <button class="btn btn-primary" id="gate-btn-approve">Approve & Apply (承認して適用)</button>
+          <button class="btn btn-primary" id="gate-btn-approve">Approve & Inject (3D空間に適用)</button>
         </div>
       </div>
     </div>
