@@ -1,49 +1,81 @@
 /**
- * NEXUS PLATFORM — HYBRID STUDIO ENGINE (Phase 1, 2, 3 Integrated)
- * PlayCanvas 3D Engine + Monaco Editor + AI Patch Dispatcher
+ * NEXUS PLATFORM — HYBRID STUDIO ENGINE
+ * Fixed: Project Creation, LocalStorage Persistence, Global Scope, Monaco & PlayCanvas
  */
 
+const STORAGE_PROJECTS_KEY = 'nexus_studio_projects_v2';
+
+// デフォルトの初期プロジェクトテンプレート
+const DEFAULT_PROJECTS = [
+  {
+    id: 'proj_game_default',
+    name: 'Cyber Drone 3D Arena',
+    type: 'GAME',
+    desc: 'PlayCanvas 3D Engineで動作するリアルタイム3Dゲーム空間',
+    created: new Date().toLocaleDateString()
+  },
+  {
+    id: 'proj_app_default',
+    name: 'Neon Cyber Terminal',
+    type: 'APP',
+    desc: 'Monaco EditorによるHTML/CSS/JSライブプレビュー環境',
+    created: new Date().toLocaleDateString(),
+    files: {
+      'index.html': `<!DOCTYPE html>\n<html>\n<head>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <div class="card">\n    <h1 id="title">⚡ NEXUS APP STUDIO</h1>\n    <p>Monaco Editorでリアルタイムに編集可能です。</p>\n    <button id="btn" onclick="handleClick()">CLICK ME</button>\n  </div>\n  <script src="main.js"><\/script>\n</body>\n</html>`,
+      'style.css': `body {\n  background: #090b10;\n  color: #00f3ff;\n  font-family: sans-serif;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n  height: 100vh;\n  margin: 0;\n}\n.card {\n  background: #151b26;\n  border: 1px solid #00f3ff;\n  padding: 24px;\n  border-radius: 8px;\n  text-align: center;\n  box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);\n}\nbutton {\n  background: #00f3ff;\n  color: #000;\n  border: none;\n  padding: 8px 16px;\n  font-weight: bold;\n  border-radius: 4px;\n  cursor: pointer;\n}`,
+      'main.js': `function handleClick() {\n  const title = document.getElementById('title');\n  title.textContent = '🔥 AI CODE EXECUTED!';\n  title.style.color = '#00ffaa';\n  console.log('Button clicked in sandbox');\n}`
+    }
+  }
+];
+
 // ==========================================
-// 1. STATE STORE (仮想ファイルシステム & 3Dシーン状態)
+// 1. STATE STORE (LocalStorage 永続化対応)
 // ==========================================
 class NexusStore {
   constructor() {
     this.projects = this.loadProjects();
     this.activeProjectId = this.projects[0] ? this.projects[0].id : null;
-    this.tasks = [
-      { id: 't1', title: '3Dシーンにライトとキューブを配置', assignee: 'Llama Architect', status: 'done' },
-      { id: 't2', title: 'Monaco Editor リアルタイムプレビュー接続', assignee: 'Qwen Developer', status: 'done' }
-    ];
     this.logs = [];
     this.pendingApprovals = [];
   }
 
   loadProjects() {
-    return [
-      {
-        id: 'proj_game_default',
-        name: 'Cyber Drone 3D Arena',
-        type: 'GAME',
-        desc: 'PlayCanvas 3D Engineで動作するリアルタイム3Dゲーム空間',
-        created: new Date().toLocaleDateString()
-      },
-      {
-        id: 'proj_app_default',
-        name: 'Neon Cyber Terminal',
-        type: 'APP',
-        desc: 'Monaco EditorによるHTML/CSS/JSライブプレビュー環境',
-        created: new Date().toLocaleDateString(),
-        files: {
-          'index.html': `<!DOCTYPE html>\n<html>\n<head>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <div class="card">\n    <h1 id="title">⚡ NEXUS APP STUDIO</h1>\n    <p>Monaco Editorでリアルタイムに編集可能です。</p>\n    <button id="btn" onclick="handleClick()">CLICK ME</button>\n  </div>\n  <script src="main.js"><\/script>\n</body>\n</html>`,
-          'style.css': `body {\n  background: #090b10;\n  color: #00f3ff;\n  font-family: sans-serif;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n  height: 100vh;\n  margin: 0;\n}\n.card {\n  background: #151b26;\n  border: 1px solid #00f3ff;\n  padding: 24px;\n  border-radius: 8px;\n  text-align: center;\n  box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);\n}\nbutton {\n  background: #00f3ff;\n  color: #000;\n  border: none;\n  padding: 8px 16px;\n  font-weight: bold;\n  border-radius: 4px;\n  cursor: pointer;\n}`,
-          'main.js': `function handleClick() {\n  const title = document.getElementById('title');\n  title.textContent = '🔥 AI CODE EXECUTED!';\n  title.style.color = '#00ffaa';\n  console.log('Button clicked in sandbox');\n}`
-        }
+    try {
+      const saved = localStorage.getItem(STORAGE_PROJECTS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    ];
+    } catch (e) {
+      console.warn('LocalStorage load error:', e);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
+  }
+
+  saveProjects() {
+    try {
+      localStorage.setItem(STORAGE_PROJECTS_KEY, JSON.stringify(this.projects));
+    } catch (e) {
+      console.error('LocalStorage save error:', e);
+    }
   }
 
   getActiveProject() {
     return this.projects.find(p => p.id === this.activeProjectId) || this.projects[0];
+  }
+
+  addProject(project) {
+    this.projects.unshift(project);
+    this.activeProjectId = project.id;
+    this.saveProjects();
+  }
+
+  deleteProject(id) {
+    this.projects = this.projects.filter(p => p.id !== id);
+    if (this.activeProjectId === id) {
+      this.activeProjectId = this.projects[0] ? this.projects[0].id : null;
+    }
+    this.saveProjects();
   }
 
   log(agent, message) {
@@ -53,7 +85,7 @@ class NexusStore {
 }
 
 // ==========================================
-// 2. PLAYCANVAS GAME STUDIO CONTROLLER
+// 2. PLAYCANVAS GAME STUDIO
 // ==========================================
 class PlayCanvasStudio {
   constructor(canvasId) {
@@ -61,15 +93,12 @@ class PlayCanvasStudio {
     this.app = null;
     this.entities = [];
     this.selectedEntity = null;
-    this.isPlaying = false;
+    this.cube = null;
     this.initEngine();
   }
 
   initEngine() {
-    if (typeof pc === 'undefined') {
-      console.warn('PlayCanvas library not loaded yet');
-      return;
-    }
+    if (typeof pc === 'undefined' || !this.canvas) return;
 
     try {
       this.app = new pc.Application(this.canvas, {
@@ -95,30 +124,28 @@ class PlayCanvasStudio {
       this.app.root.addChild(light);
       this.entities.push(light);
 
-      // Main Cyber Cube
-      const cube = new pc.Entity('Cyber Cube');
-      cube.addComponent('render', { type: 'box' });
-      cube.setPosition(0, 0.5, 0);
-      this.app.root.addChild(cube);
-      this.entities.push(cube);
+      // Cyber Cube
+      this.cube = new pc.Entity('Cyber Cube');
+      this.cube.addComponent('render', { type: 'box' });
+      this.cube.setPosition(0, 0.5, 0);
+      this.app.root.addChild(this.cube);
+      this.entities.push(this.cube);
 
-      // Material
       const mat = new pc.StandardMaterial();
       mat.diffuse = new pc.Color(0, 0.9, 1);
       mat.emissive = new pc.Color(0, 0.2, 0.3);
       mat.update();
-      cube.render.material = mat;
+      this.cube.render.material = mat;
 
-      // Update Loop (Rotate Cube)
       this.app.on('update', (dt) => {
-        if (cube) {
-          cube.rotate(15 * dt, 25 * dt, 0);
+        if (this.cube) {
+          this.cube.rotate(15 * dt, 25 * dt, 0);
         }
       });
 
-      console.log('✔ PlayCanvas 3D Engine initialized successfully');
+      console.log('✔ PlayCanvas Engine Ready');
     } catch (e) {
-      console.error('Failed to init PlayCanvas:', e);
+      console.warn('PlayCanvas Init Warning:', e.message);
     }
   }
 
@@ -158,7 +185,7 @@ class PlayCanvasStudio {
   renderInspector() {
     const container = document.getElementById('game-inspector-body');
     if (!container || !this.selectedEntity) {
-      container.innerHTML = '<div class="empty-state">オブジェクトを選択してください</div>';
+      if (container) container.innerHTML = '<div class="empty-state">オブジェクトを選択してください</div>';
       return;
     }
     const e = this.selectedEntity;
@@ -195,7 +222,7 @@ class PlayCanvasStudio {
 }
 
 // ==========================================
-// 3. MONACO EDITOR & APP STUDIO CONTROLLER
+// 3. MONACO EDITOR APP STUDIO
 // ==========================================
 class MonacoStudio {
   constructor(editorContainerId, previewIframeId) {
@@ -230,13 +257,18 @@ class MonacoStudio {
         this.triggerLivePreview();
       });
 
-      console.log('✔ Monaco Editor loaded successfully');
+      console.log('✔ Monaco Editor Ready');
       this.triggerLivePreview();
     });
   }
 
   loadProjectFiles(files) {
-    this.files = { ...files };
+    // filesが存在しない場合のフォールバック
+    if (!files || typeof files !== 'object') {
+      this.files = JSON.parse(JSON.stringify(DEFAULT_PROJECTS[1].files));
+    } else {
+      this.files = { ...files };
+    }
     this.switchFile('index.html');
   }
 
@@ -254,6 +286,7 @@ class MonacoStudio {
     document.querySelectorAll('.file-item').forEach(el => {
       el.classList.toggle('active', el.dataset.file === fileName);
     });
+    this.triggerLivePreview();
   }
 
   triggerLivePreview() {
@@ -280,7 +313,7 @@ class MonacoStudio {
 }
 
 // ==========================================
-// 4. MAIN PLATFORM ORCHESTRATOR
+// 4. PLATFORM ORCHESTRATOR
 // ==========================================
 class NexusPlatform {
   constructor() {
@@ -288,14 +321,14 @@ class NexusPlatform {
     this.currentView = 'dashboard';
 
     this.initUIEvents();
-    this.render();
 
-    // Studio エンジンの初期化
     window.gameStudio = new PlayCanvasStudio('playcanvas-canvas');
     window.appStudio = new MonacoStudio('monaco-editor-container', 'app-preview-frame');
 
-    // 初期プロジェクトのロード
-    this.selectProject(this.store.activeProjectId);
+    this.render();
+    if (this.store.activeProjectId) {
+      this.selectProject(this.store.activeProjectId);
+    }
   }
 
   initUIEvents() {
@@ -304,14 +337,22 @@ class NexusPlatform {
       btn.addEventListener('click', () => this.switchView(btn.dataset.view));
     });
 
-    // Modals
+    // Project Modals
     document.getElementById('btn-quick-new-proj').addEventListener('click', () => this.openCreateModal());
     document.getElementById('btn-open-create-modal').addEventListener('click', () => this.openCreateModal());
     document.getElementById('btn-close-proj-modal').addEventListener('click', () => this.closeCreateModal());
     document.getElementById('btn-cancel-proj').addEventListener('click', () => this.closeCreateModal());
     document.getElementById('btn-submit-proj').addEventListener('click', () => this.handleCreateProject());
 
-    // Game Studio Controls
+    // Studio Options Select
+    document.querySelectorAll('.studio-option input').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        document.querySelectorAll('.studio-option').forEach(opt => opt.classList.remove('active'));
+        e.target.closest('.studio-option').classList.add('active');
+      });
+    });
+
+    // Game Controls
     document.getElementById('btn-add-cube').addEventListener('click', () => {
       window.gameStudio.addEntity('box', 'Cube ' + (window.gameStudio.entities.length + 1));
       this.showToast('Cube added to 3D Scene');
@@ -320,11 +361,11 @@ class NexusPlatform {
       window.gameStudio.addEntity('sphere', 'Sphere ' + (window.gameStudio.entities.length + 1));
       this.showToast('Sphere added to 3D Scene');
     });
-    document.getElementById('btn-toggle-play').addEventListener('click', (e) => {
+    document.getElementById('btn-toggle-play').addEventListener('click', () => {
       this.showToast('PlayCanvas 3D Game Loop Active');
     });
 
-    // App Studio Controls
+    // App Controls
     document.querySelectorAll('.file-item').forEach(item => {
       item.addEventListener('click', () => window.appStudio.switchFile(item.dataset.file));
     });
@@ -354,13 +395,12 @@ class NexusPlatform {
     const navBtn = document.querySelector(`.nav-item[data-view="${viewName}"]`);
     if (navBtn) navBtn.classList.add('active');
 
-    // Workspace切り替え時のレイアウト調整
     if (viewName === 'workspace') {
       const p = this.store.getActiveProject();
-      if (p.type === 'GAME' && window.gameStudio.app) {
+      if (p.type === 'GAME' && window.gameStudio && window.gameStudio.app) {
         window.gameStudio.app.resizeCanvas();
         window.gameStudio.renderHierarchy();
-      } else if (p.type === 'APP' && window.appStudio.editor) {
+      } else if (p.type === 'APP' && window.appStudio && window.appStudio.editor) {
         window.appStudio.editor.layout();
       }
     }
@@ -370,15 +410,16 @@ class NexusPlatform {
   selectProject(id) {
     this.store.activeProjectId = id;
     const p = this.store.getActiveProject();
-    this.showToast(`Switched to: ${p.name}`);
+    if (!p) return;
 
-    // UIバッジ更新
+    this.showToast(`Active Studio: ${p.name}`);
+
     document.getElementById('header-active-project').textContent = `${p.type === 'GAME' ? '🎮' : '💻'} ${p.name}`;
     document.getElementById('workspace-title').textContent = p.name;
-    document.getElementById('workspace-type-badge').textContent = `${p.type} STUDIO`;
-    document.getElementById('workspace-type-badge').className = `badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}`;
+    const badge = document.getElementById('workspace-type-badge');
+    badge.textContent = `${p.type} STUDIO`;
+    badge.className = `badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}`;
 
-    // スタジオ表示切り替え
     const gameContainer = document.getElementById('studio-game-container');
     const appContainer = document.getElementById('studio-app-container');
     const gameControls = document.getElementById('workspace-controls-game');
@@ -390,7 +431,7 @@ class NexusPlatform {
       gameControls.style.display = 'flex';
       appControls.style.display = 'none';
       setTimeout(() => {
-        if (window.gameStudio.app) {
+        if (window.gameStudio && window.gameStudio.app) {
           window.gameStudio.app.resizeCanvas();
           window.gameStudio.renderHierarchy();
         }
@@ -404,9 +445,62 @@ class NexusPlatform {
         window.appStudio.loadProjectFiles(p.files);
       }
     }
+    this.render();
   }
 
-  // AI Direct Commander with Live Workspace Application
+  openCreateModal() {
+    document.getElementById('proj-name').value = '';
+    document.getElementById('modal-create-project').classList.add('active');
+    document.getElementById('proj-name').focus();
+  }
+
+  closeCreateModal() {
+    document.getElementById('modal-create-project').classList.remove('active');
+  }
+
+  handleCreateProject() {
+    const nameInput = document.getElementById('proj-name');
+    const name = nameInput.value.trim() || `Studio Project ${this.store.projects.length + 1}`;
+    
+    // 確実に選択されたスタジオ種別を取得
+    const checkedRadio = document.querySelector('input[name="studio-type"]:checked');
+    const type = checkedRadio ? checkedRadio.value : 'GAME';
+
+    const newProj = {
+      id: 'proj_' + Date.now(),
+      name,
+      type,
+      desc: type === 'GAME' ? 'PlayCanvas 3D Game Studio' : 'Monaco Web IDE Studio',
+      created: new Date().toLocaleDateString(),
+      files: type === 'APP' ? JSON.parse(JSON.stringify(DEFAULT_PROJECTS[1].files)) : undefined
+    };
+
+    // 1. Storeへ保存 (LocalStorage自動永続化)
+    this.store.addProject(newProj);
+    this.store.log('Human', `プロジェクト [${name}] (${type} STUDIO) を新規作成しました。`);
+
+    // 2. モーダルを閉じる
+    this.closeCreateModal();
+
+    // 3. UI一覧を再描画
+    this.render();
+
+    // 4. 新規プロジェクトのスタジオを開く
+    this.selectProject(newProj.id);
+    this.switchView('workspace');
+    this.showToast(`Created & Launched: ${name}`);
+  }
+
+  deleteProject(id) {
+    if (!confirm('このプロジェクトを削除しますか？')) return;
+    this.store.deleteProject(id);
+    this.render();
+    if (this.store.activeProjectId) {
+      this.selectProject(this.store.activeProjectId);
+    }
+    this.showToast('Project deleted');
+  }
+
   handleAIChat() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
@@ -426,12 +520,12 @@ class NexusPlatform {
     setTimeout(() => {
       let patchPreview = '';
       if (p.type === 'GAME') {
-        patchPreview = `// [Qwen] PlayCanvas Entity Injection\n+ const entity = new pc.Entity('AI_${msg.slice(0, 10)}');\n+ entity.addComponent('render', { type: 'sphere' });\n+ entity.setPosition(0, 2, 0);\n+ app.root.addChild(entity);`;
+        patchPreview = `// [Qwen] PlayCanvas 3D Scene Injection\n+ const entity = new pc.Entity('AI_${msg.slice(0, 10)}');\n+ entity.addComponent('render', { type: 'sphere' });\n+ entity.setPosition(0, 2, 0);\n+ app.root.addChild(entity);`;
         this.currentPendingPatch = () => {
           window.gameStudio.addEntity('sphere', 'AI Sphere');
         };
       } else {
-        patchPreview = `// [Qwen] Monaco Editor Code Injection\n+ // Added based on instruction: "${msg}"\n+ <div class="ai-generated-box" style="border:1px solid #00f3ff; margin-top:10px; padding:10px;">\n+   ✨ AI Generated Component (${msg})\n+ </div>`;
+        patchPreview = `// [Qwen] Monaco Editor Code Injection\n+ <!-- Added by AI: "${msg}" -->\n+ <div style="border:1px dashed #00f3ff; padding:10px; margin-top:12px;">\n+   ✨ AI Generated: ${msg}\n+ </div>`;
         this.currentPendingPatch = () => {
           const currentHtml = window.appStudio.files['index.html'] || '';
           window.appStudio.files['index.html'] = currentHtml.replace('</div>', `  <div style="border:1px dashed #00f3ff; padding:10px; margin-top:12px;">✨ AI Added: ${msg}</div>\n  </div>`);
@@ -442,17 +536,16 @@ class NexusPlatform {
 
       typing.textContent = `[Qwen] 変更差分を生成しました。Human Approval Gateへ送出します。`;
 
-      // 承認ゲートを表示
       document.getElementById('gate-diff-content').textContent = patchPreview;
       document.getElementById('modal-approval-gate').classList.add('active');
-    }, 700);
+    }, 600);
   }
 
   handleApproval(approved) {
     document.getElementById('modal-approval-gate').classList.remove('active');
     if (approved && this.currentPendingPatch) {
       this.currentPendingPatch();
-      this.showToast('AI Patch Applied to Studio!');
+      this.showToast('AI Patch Applied!');
       this.store.log('Human Gate', 'AIのコード/シーン変更を承認して適用しました。');
       this.switchView('workspace');
     } else {
@@ -461,28 +554,9 @@ class NexusPlatform {
     this.currentPendingPatch = null;
   }
 
-  openCreateModal() { document.getElementById('modal-create-project').classList.add('active'); }
-  closeCreateModal() { document.getElementById('modal-create-project').classList.remove('active'); }
-
-  handleCreateProject() {
-    const name = document.getElementById('proj-name').value.trim() || 'New Studio Project';
-    const type = document.querySelector('input[name="studio-type"]:checked').value;
-    const newProj = {
-      id: 'proj_' + Date.now(),
-      name,
-      type,
-      desc: type === 'GAME' ? 'PlayCanvas 3D Game' : 'Monaco Web IDE App',
-      created: new Date().toLocaleDateString(),
-      files: type === 'APP' ? this.store.projects[1].files : undefined
-    };
-    this.store.projects.unshift(newProj);
-    this.closeCreateModal();
-    this.selectProject(newProj.id);
-    this.switchView('workspace');
-  }
-
   showToast(msg) {
     const t = document.getElementById('toast');
+    if (!t) return;
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2400);
@@ -490,34 +564,53 @@ class NexusPlatform {
 
   render() {
     document.getElementById('stat-proj-count').textContent = this.store.projects.length;
-    document.getElementById('dash-recent-projects').innerHTML = this.store.projects.map(p => `
-      <div class="compact-proj-item" onclick="nexusApp.selectProject('${p.id}'); nexusApp.switchView('workspace');">
-        <div><strong>${p.name}</strong> <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type} STUDIO</span></div>
-        <button class="btn btn-xs btn-primary">起動</button>
-      </div>
-    `).join('');
 
-    document.getElementById('projects-grid').innerHTML = this.store.projects.map(p => `
-      <div class="project-card ${p.id === this.store.activeProjectId ? 'active-proj' : ''}">
-        <div>
-          <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type} STUDIO</span>
-          <div class="project-card-title">${p.name}</div>
-          <div class="project-card-desc">${p.desc}</div>
+    // Dashboard Recent Projects
+    const dashRecent = document.getElementById('dash-recent-projects');
+    if (dashRecent) {
+      dashRecent.innerHTML = this.store.projects.map(p => `
+        <div class="compact-proj-item" onclick="window.nexusApp.selectProject('${p.id}'); window.nexusApp.switchView('workspace');">
+          <div>
+            <strong>${p.name}</strong> 
+            <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type} STUDIO</span>
+          </div>
+          <button class="btn btn-xs btn-primary">起動</button>
         </div>
-        <div class="project-card-footer">
-          <span style="font-size:10px; color:var(--text-subtle);">${p.created}</span>
-          <button class="btn btn-xs btn-primary" onclick="nexusApp.selectProject('${p.id}'); nexusApp.switchView('workspace');">スタジオを開く</button>
-        </div>
-      </div>
-    `).join('');
+      `).join('');
+    }
 
-    document.getElementById('dash-activity-log').innerHTML = this.store.logs.map(l => `
-      <div class="log-entry"><span style="color:var(--text-subtle)">${l.time}</span> [${l.agent}] ${l.message}</div>
-    `).join('');
+    // Projects Grid
+    const projGrid = document.getElementById('projects-grid');
+    if (projGrid) {
+      projGrid.innerHTML = this.store.projects.map(p => `
+        <div class="project-card ${p.id === this.store.activeProjectId ? 'active-proj' : ''}">
+          <div>
+            <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type} STUDIO</span>
+            <div class="project-card-title">${p.name}</div>
+            <div class="project-card-desc">${p.desc}</div>
+          </div>
+          <div class="project-card-footer">
+            <span style="font-size:10px; color:var(--text-subtle);">${p.created}</span>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-xs btn-danger-subtle" onclick="window.nexusApp.deleteProject('${p.id}')">削除</button>
+              <button class="btn btn-xs btn-primary" onclick="window.nexusApp.selectProject('${p.id}'); window.nexusApp.switchView('workspace');">スタジオを開く</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Logs
+    const logContainer = document.getElementById('dash-activity-log');
+    if (logContainer) {
+      logContainer.innerHTML = this.store.logs.map(l => `
+        <div class="log-entry"><span style="color:var(--text-subtle)">${l.time}</span> [${l.agent}] ${l.message}</div>
+      `).join('');
+    }
   }
 }
 
-let nexusApp;
+// グローバルスコープに明示的にバインド（HTMLのインラインonclickから参照可能にする）
 window.addEventListener('DOMContentLoaded', () => {
-  nexusApp = new NexusPlatform();
+  window.nexusApp = new NexusPlatform();
 });
