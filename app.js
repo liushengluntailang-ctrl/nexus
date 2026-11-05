@@ -1,104 +1,40 @@
 /**
- * NEXUS PLATFORM — HYBRID STUDIO ENGINE
- * Fixed: Project Creation, LocalStorage Persistence, Global Scope, Monaco & PlayCanvas
+ * NEXUS PLATFORM — PlayCanvas Native Engine & AI Multi-Agent Conference
  */
 
-const STORAGE_PROJECTS_KEY = 'nexus_studio_projects_v2';
-
-// デフォルトの初期プロジェクトテンプレート
-const DEFAULT_PROJECTS = [
-  {
-    id: 'proj_game_default',
-    name: 'Cyber Drone 3D Arena',
-    type: 'GAME',
-    desc: 'PlayCanvas 3D Engineで動作するリアルタイム3Dゲーム空間',
-    created: new Date().toLocaleDateString()
-  },
-  {
-    id: 'proj_app_default',
-    name: 'Neon Cyber Terminal',
-    type: 'APP',
-    desc: 'Monaco EditorによるHTML/CSS/JSライブプレビュー環境',
-    created: new Date().toLocaleDateString(),
-    files: {
-      'index.html': `<!DOCTYPE html>\n<html>\n<head>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <div class="card">\n    <h1 id="title">⚡ NEXUS APP STUDIO</h1>\n    <p>Monaco Editorでリアルタイムに編集可能です。</p>\n    <button id="btn" onclick="handleClick()">CLICK ME</button>\n  </div>\n  <script src="main.js"><\/script>\n</body>\n</html>`,
-      'style.css': `body {\n  background: #090b10;\n  color: #00f3ff;\n  font-family: sans-serif;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n  height: 100vh;\n  margin: 0;\n}\n.card {\n  background: #151b26;\n  border: 1px solid #00f3ff;\n  padding: 24px;\n  border-radius: 8px;\n  text-align: center;\n  box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);\n}\nbutton {\n  background: #00f3ff;\n  color: #000;\n  border: none;\n  padding: 8px 16px;\n  font-weight: bold;\n  border-radius: 4px;\n  cursor: pointer;\n}`,
-      'main.js': `function handleClick() {\n  const title = document.getElementById('title');\n  title.textContent = '🔥 AI CODE EXECUTED!';\n  title.style.color = '#00ffaa';\n  console.log('Button clicked in sandbox');\n}`
-    }
-  }
-];
+const STORAGE_PROJECTS_KEY = 'nexus_studio_projects_v3';
 
 // ==========================================
-// 1. STATE STORE (LocalStorage 永続化対応)
+// 1. PLAYCANVAS NATIVE ENGINE STUDIO CONTROLLER
 // ==========================================
-class NexusStore {
-  constructor() {
-    this.projects = this.loadProjects();
-    this.activeProjectId = this.projects[0] ? this.projects[0].id : null;
-    this.logs = [];
-    this.pendingApprovals = [];
-  }
-
-  loadProjects() {
-    try {
-      const saved = localStorage.getItem(STORAGE_PROJECTS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('LocalStorage load error:', e);
-    }
-    return JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
-  }
-
-  saveProjects() {
-    try {
-      localStorage.setItem(STORAGE_PROJECTS_KEY, JSON.stringify(this.projects));
-    } catch (e) {
-      console.error('LocalStorage save error:', e);
-    }
-  }
-
-  getActiveProject() {
-    return this.projects.find(p => p.id === this.activeProjectId) || this.projects[0];
-  }
-
-  addProject(project) {
-    this.projects.unshift(project);
-    this.activeProjectId = project.id;
-    this.saveProjects();
-  }
-
-  deleteProject(id) {
-    this.projects = this.projects.filter(p => p.id !== id);
-    if (this.activeProjectId === id) {
-      this.activeProjectId = this.projects[0] ? this.projects[0].id : null;
-    }
-    this.saveProjects();
-  }
-
-  log(agent, message) {
-    this.logs.unshift({ time: new Date().toLocaleTimeString(), agent, message });
-    if (this.logs.length > 40) this.logs.pop();
-  }
-}
-
-// ==========================================
-// 2. PLAYCANVAS GAME STUDIO
-// ==========================================
-class PlayCanvasStudio {
+class PlayCanvasNativeStudio {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
     this.app = null;
     this.entities = [];
     this.selectedEntity = null;
-    this.cube = null;
+    this.isPlaying = false;
+    
+    // Orbit Camera State
+    this.cameraDistance = 7;
+    this.cameraPitch = 25;
+    this.cameraYaw = 45;
+    this.cameraPivot = new pc.Vec3(0, 0.5, 0);
+    this.isDraggingLeft = false;
+    this.isDraggingRight = false;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+
     this.initEngine();
+    this.setupOrbitControls();
+    this.setupGLBDropZone();
   }
 
   initEngine() {
-    if (typeof pc === 'undefined' || !this.canvas) return;
+    if (typeof pc === 'undefined' || !this.canvas) {
+      console.error('PlayCanvas Engine CDN not loaded');
+      return;
+    }
 
     try {
       this.app = new pc.Application(this.canvas, {
@@ -109,51 +45,207 @@ class PlayCanvasStudio {
       this.app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
       this.app.setCanvasResolution(pc.RESOLUTION_AUTO);
 
-      // Camera
-      const camera = new pc.Entity('Main Camera');
-      camera.addComponent('camera', { clearColor: new pc.Color(0.04, 0.05, 0.07) });
-      camera.setPosition(0, 3, 6);
-      camera.lookAt(0, 0, 0);
-      this.app.root.addChild(camera);
-      this.entities.push(camera);
-
-      // Light
-      const light = new pc.Entity('Directional Light');
-      light.addComponent('light', { type: 'directional', color: new pc.Color(1, 1, 1), intensity: 1.2 });
-      light.setEulerAngles(45, 30, 0);
-      this.app.root.addChild(light);
-      this.entities.push(light);
-
-      // Cyber Cube
-      this.cube = new pc.Entity('Cyber Cube');
-      this.cube.addComponent('render', { type: 'box' });
-      this.cube.setPosition(0, 0.5, 0);
-      this.app.root.addChild(this.cube);
-      this.entities.push(this.cube);
-
-      const mat = new pc.StandardMaterial();
-      mat.diffuse = new pc.Color(0, 0.9, 1);
-      mat.emissive = new pc.Color(0, 0.2, 0.3);
-      mat.update();
-      this.cube.render.material = mat;
-
-      this.app.on('update', (dt) => {
-        if (this.cube) {
-          this.cube.rotate(15 * dt, 25 * dt, 0);
-        }
+      // 1. Orbit Camera
+      this.camera = new pc.Entity('Orbit Camera');
+      this.camera.addComponent('camera', {
+        clearColor: new pc.Color(0.04, 0.05, 0.08),
+        farClip: 1000
       });
+      this.app.root.addChild(this.camera);
+      this.entities.push(this.camera);
+      this.updateCameraTransform();
 
-      console.log('✔ PlayCanvas Engine Ready');
+      // 2. Directional Sun Light
+      this.sunLight = new pc.Entity('Sun Light');
+      this.sunLight.addComponent('light', {
+        type: 'directional',
+        color: new pc.Color(1, 0.95, 0.9),
+        intensity: 1.5,
+        castShadows: false
+      });
+      this.sunLight.setEulerAngles(45, 30, 0);
+      this.app.root.addChild(this.sunLight);
+      this.entities.push(this.sunLight);
+
+      // 3. Grid Floor (3Dグリッド基準床)
+      this.gridFloor = new pc.Entity('Grid Floor');
+      this.gridFloor.addComponent('render', { type: 'plane' });
+      this.gridFloor.setLocalScale(20, 1, 20);
+      const gridMat = new pc.StandardMaterial();
+      gridMat.diffuse = new pc.Color(0.08, 0.1, 0.15);
+      gridMat.emissive = new pc.Color(0.02, 0.04, 0.06);
+      gridMat.update();
+      this.gridFloor.render.material = gridMat;
+      this.app.root.addChild(this.gridFloor);
+      this.entities.push(this.gridFloor);
+
+      // 4. Initial Cyber Drone Model (PlayCanvas PBR)
+      this.createCyberDrone();
+
+      console.log('✔ Native PlayCanvas Engine Initialized');
+      this.renderHierarchy();
     } catch (e) {
-      console.warn('PlayCanvas Init Warning:', e.message);
+      console.error('PlayCanvas init error:', e);
     }
   }
 
-  addEntity(type = 'box', name = 'New Object') {
-    if (!this.app) return;
+  createCyberDrone() {
+    const droneRoot = new pc.Entity('Cyber Drone');
+    droneRoot.setPosition(0, 1, 0);
+
+    // Body Box
+    const body = new pc.Entity('Drone Body');
+    body.addComponent('render', { type: 'box' });
+    body.setLocalScale(1.2, 0.25, 0.8);
+    const bodyMat = new pc.StandardMaterial();
+    bodyMat.diffuse = new pc.Color(0.1, 0.15, 0.2);
+    bodyMat.metalness = 0.8;
+    bodyMat.roughness = 0.2;
+    bodyMat.update();
+    body.render.material = bodyMat;
+    droneRoot.addChild(body);
+
+    // Core Sphere (Glow)
+    const core = new pc.Entity('Plasma Core');
+    core.addComponent('render', { type: 'sphere' });
+    core.setLocalScale(0.4, 0.4, 0.4);
+    core.setLocalPosition(0, 0.2, 0);
+    const coreMat = new pc.StandardMaterial();
+    coreMat.diffuse = new pc.Color(0, 0.9, 1);
+    coreMat.emissive = new pc.Color(0, 0.9, 1);
+    coreMat.update();
+    core.render.material = coreMat;
+    droneRoot.addChild(core);
+
+    this.app.root.addChild(droneRoot);
+    this.entities.push(droneRoot);
+
+    // ホバリング更新スクリプト
+    let time = 0;
+    this.app.on('update', (dt) => {
+      if (this.isPlaying && droneRoot) {
+        time += dt * 3;
+        droneRoot.setPosition(0, 1 + Math.sin(time) * 0.2, 0);
+        droneRoot.rotate(0, 30 * dt, 0);
+      }
+    });
+
+    this.selectEntity(this.entities.indexOf(droneRoot));
+  }
+
+  setupOrbitControls() {
+    const canvas = this.canvas;
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.isDraggingLeft = true;
+      if (e.button === 2) this.isDraggingRight = true;
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.isDraggingLeft = false;
+      this.isDraggingRight = false;
+    });
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    canvas.addEventListener('mousemove', (e) => {
+      const dx = e.clientX - this.lastMouseX;
+      const dy = e.clientY - this.lastMouseY;
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+
+      if (this.isDraggingLeft) {
+        this.cameraYaw -= dx * 0.35;
+        this.cameraPitch = Math.max(-85, Math.min(85, this.cameraPitch + dy * 0.35));
+        this.updateCameraTransform();
+      } else if (this.isDraggingRight) {
+        // Pan
+        const panSpeed = 0.005 * this.cameraDistance;
+        const right = this.camera.right;
+        const up = this.camera.up;
+        this.cameraPivot.add(right.clone().mulScalar(-dx * panSpeed));
+        this.cameraPivot.add(up.clone().mulScalar(dy * panSpeed));
+        this.updateCameraTransform();
+      }
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.cameraDistance = Math.max(1, Math.min(100, this.cameraDistance + e.deltaY * 0.008));
+      this.updateCameraTransform();
+    }, { passive: false });
+  }
+
+  updateCameraTransform() {
+    if (!this.camera) return;
+    const radYaw = this.cameraYaw * pc.math.DEG_TO_RAD;
+    const radPitch = this.cameraPitch * pc.math.DEG_TO_RAD;
+
+    const x = this.cameraDistance * Math.sin(radYaw) * Math.cos(radPitch);
+    const y = this.cameraDistance * Math.sin(radPitch);
+    const z = this.cameraDistance * Math.cos(radYaw) * Math.cos(radPitch);
+
+    this.camera.setPosition(this.cameraPivot.x + x, this.cameraPivot.y + y, this.cameraPivot.z + z);
+    this.camera.lookAt(this.cameraPivot);
+  }
+
+  resetCamera() {
+    this.cameraDistance = 7;
+    this.cameraPitch = 25;
+    this.cameraYaw = 45;
+    this.cameraPivot.set(0, 0.5, 0);
+    this.updateCameraTransform();
+  }
+
+  setupGLBDropZone() {
+    const dropZone = document.getElementById('viewport-drop-zone');
+    const fileInput = document.getElementById('glb-file-input');
+
+    const handleFile = (file) => {
+      if (!file.name.match(/\.(glb|gltf)$/i)) {
+        window.nexusApp.showToast('Please drop a .glb or .gltf file');
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      this.loadGLBAsset(url, file.name);
+    };
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
+      });
+    }
+  }
+
+  loadGLBAsset(url, name) {
+    this.app.assets.loadFromUrl(url, 'container', (err, asset) => {
+      if (err) {
+        window.nexusApp.showToast(`GLB Load Failed: ${err}`);
+        return;
+      }
+      const entity = asset.resource.instantiateModelEntity();
+      entity.name = name.replace(/\.[^/.]+$/, "");
+      entity.setPosition(0, 0, 0);
+      this.app.root.addChild(entity);
+      this.entities.push(entity);
+      this.renderHierarchy();
+      this.selectEntity(this.entities.indexOf(entity));
+      window.nexusApp.showToast(`Imported 3D Model: ${name}`);
+    });
+  }
+
+  addPrimitive(type = 'box', name = 'Object') {
     const entity = new pc.Entity(name);
     entity.addComponent('render', { type });
-    entity.setPosition((Math.random() - 0.5) * 4, 0.5, (Math.random() - 0.5) * 4);
+    entity.setPosition((Math.random() - 0.5) * 4, 1, (Math.random() - 0.5) * 4);
     
     const mat = new pc.StandardMaterial();
     mat.diffuse = new pc.Color(Math.random(), Math.random(), Math.random());
@@ -163,12 +255,16 @@ class PlayCanvasStudio {
     this.app.root.addChild(entity);
     this.entities.push(entity);
     this.renderHierarchy();
+    this.selectEntity(this.entities.indexOf(entity));
     return entity;
   }
 
   renderHierarchy() {
     const container = document.getElementById('game-hierarchy-list');
+    const countBadge = document.getElementById('hierarchy-count');
     if (!container) return;
+    if (countBadge) countBadge.textContent = this.entities.length;
+
     container.innerHTML = this.entities.map((e, idx) => `
       <div class="tree-node ${this.selectedEntity === e ? 'active' : ''}" onclick="window.gameStudio.selectEntity(${idx})">
         <span>${e.render ? '📦' : (e.camera ? '📷' : '💡')}</span> ${e.name}
@@ -190,27 +286,75 @@ class PlayCanvasStudio {
     }
     const e = this.selectedEntity;
     const pos = e.getPosition();
+    const rot = e.getEulerAngles();
+    const scl = e.getLocalScale();
+
     container.innerHTML = `
-      <div class="prop-group">
-        <div class="prop-label">Entity Name</div>
+      <div class="prop-section">
+        <div class="prop-section-title">Identity</div>
         <input type="text" class="form-input" value="${e.name}" onchange="window.gameStudio.updateName(this.value)">
       </div>
-      <div class="prop-group">
-        <div class="prop-label">Position (X, Y, Z)</div>
-        <div class="prop-row">
-          <input type="number" class="form-input" value="${pos.x.toFixed(2)}" step="0.5" onchange="window.gameStudio.updatePos('x', this.value)">
-          <input type="number" class="form-input" value="${pos.y.toFixed(2)}" step="0.5" onchange="window.gameStudio.updatePos('y', this.value)">
-          <input type="number" class="form-input" value="${pos.z.toFixed(2)}" step="0.5" onchange="window.gameStudio.updatePos('z', this.value)">
+
+      <div class="prop-section">
+        <div class="prop-section-title">Transform</div>
+        <div style="font-size:10px; color:var(--text-subtle); margin-bottom:2px;">Position</div>
+        <div class="prop-row-3">
+          <div class="coord-input"><span class="coord-tag x">X</span><input type="number" step="0.2" value="${pos.x.toFixed(2)}" onchange="window.gameStudio.updateTransform('pos','x',this.value)"></div>
+          <div class="coord-input"><span class="coord-tag y">Y</span><input type="number" step="0.2" value="${pos.y.toFixed(2)}" onchange="window.gameStudio.updateTransform('pos','y',this.value)"></div>
+          <div class="coord-input"><span class="coord-tag z">Z</span><input type="number" step="0.2" value="${pos.z.toFixed(2)}" onchange="window.gameStudio.updateTransform('pos','z',this.value)"></div>
+        </div>
+        <div style="font-size:10px; color:var(--text-subtle); margin:6px 0 2px;">Rotation</div>
+        <div class="prop-row-3">
+          <div class="coord-input"><span class="coord-tag x">X</span><input type="number" step="5" value="${rot.x.toFixed(0)}" onchange="window.gameStudio.updateTransform('rot','x',this.value)"></div>
+          <div class="coord-input"><span class="coord-tag y">Y</span><input type="number" step="5" value="${rot.y.toFixed(0)}" onchange="window.gameStudio.updateTransform('rot','y',this.value)"></div>
+          <div class="coord-input"><span class="coord-tag z">Z</span><input type="number" step="5" value="${rot.z.toFixed(0)}" onchange="window.gameStudio.updateTransform('rot','z',this.value)"></div>
+        </div>
+        <div style="font-size:10px; color:var(--text-subtle); margin:6px 0 2px;">Scale</div>
+        <div class="prop-row-3">
+          <div class="coord-input"><span class="coord-tag x">X</span><input type="number" step="0.1" value="${scl.x.toFixed(2)}" onchange="window.gameStudio.updateTransform('scl','x',this.value)"></div>
+          <div class="coord-input"><span class="coord-tag y">Y</span><input type="number" step="0.1" value="${scl.y.toFixed(2)}" onchange="window.gameStudio.updateTransform('scl','y',this.value)"></div>
+          <div class="coord-input"><span class="coord-tag z">Z</span><input type="number" step="0.1" value="${scl.z.toFixed(2)}" onchange="window.gameStudio.updateTransform('scl','z',this.value)"></div>
         </div>
       </div>
+
+      ${e.render ? `
+      <div class="prop-section">
+        <div class="prop-section-title">PBR Material</div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px;">Diffuse Color</span>
+          <input type="color" value="#00f3ff" onchange="window.gameStudio.updateColor(this.value)">
+        </div>
+      </div>
+      ` : ''}
     `;
   }
 
-  updatePos(axis, val) {
+  updateTransform(type, axis, val) {
     if (!this.selectedEntity) return;
-    const pos = this.selectedEntity.getPosition();
-    pos[axis] = parseFloat(val);
-    this.selectedEntity.setPosition(pos);
+    const v = parseFloat(val);
+    if (type === 'pos') {
+      const p = this.selectedEntity.getPosition();
+      p[axis] = v;
+      this.selectedEntity.setPosition(p);
+    } else if (type === 'rot') {
+      const r = this.selectedEntity.getEulerAngles();
+      r[axis] = v;
+      this.selectedEntity.setEulerAngles(r);
+    } else if (type === 'scl') {
+      const s = this.selectedEntity.getLocalScale();
+      s[axis] = v;
+      this.selectedEntity.setLocalScale(s);
+    }
+  }
+
+  updateColor(hex) {
+    if (!this.selectedEntity || !this.selectedEntity.render) return;
+    const color = new pc.Color().fromString(hex);
+    const mat = this.selectedEntity.render.material;
+    if (mat) {
+      mat.diffuse = color;
+      mat.update();
+    }
   }
 
   updateName(val) {
@@ -222,167 +366,235 @@ class PlayCanvasStudio {
 }
 
 // ==========================================
-// 3. MONACO EDITOR APP STUDIO
+// 2. AI MULTI-AGENT CONFERENCE CONTROLLER (自動会議室)
 // ==========================================
-class MonacoStudio {
-  constructor(editorContainerId, previewIframeId) {
-    this.container = document.getElementById(editorContainerId);
-    this.previewFrame = document.getElementById(previewIframeId);
-    this.editor = null;
-    this.currentFile = 'index.html';
-    this.files = {};
-    this.initMonaco();
+class AIConferenceSystem {
+  constructor(platform) {
+    this.platform = platform;
+    this.isConferencing = false;
   }
 
-  initMonaco() {
-    if (typeof require === 'undefined') {
-      setTimeout(() => this.initMonaco(), 200);
-      return;
+  async runConference(userGoal) {
+    if (this.isConferencing) return;
+    this.isConferencing = true;
+
+    const stream = document.getElementById('conf-messages');
+    const badge = document.getElementById('conf-status-badge');
+    badge.textContent = 'Conference in Progress...';
+    badge.style.color = 'var(--accent-amber)';
+
+    // ユーザー課題の投下
+    this.appendBubble('user', 'Human Supervisor', userGoal);
+
+    // 1. Llama (Architect) - 企画・構造分解
+    await this.step(1200, 'llama', 'Llama (Architect)', 
+      `ユーザーの要求「${userGoal}」を分析しました。
+PlayCanvas 3D空間に最適なシーン構成を提案します：
+- Entity階層: 親ノード "Drone_Unit" の配下に回転ローターと発光コアを配置
+- マテリアル: Diffuse #00f3ff, Emissive 1.2
+- 物理スクリプト: 浮遊(sin波)および障害物回避ロジックを策定。
+Qwen、PlayCanvas用の実体化スクリプトを生成してください。`
+    );
+
+    // 2. Qwen (Developer) - スクリプト・コード実装
+    const generatedScript = `// [PlayCanvas Generated Entity Script]
+const drone = new pc.Entity('AI_HoverDrone');
+drone.addComponent('render', { type: 'capsule' });
+drone.setLocalScale(0.8, 0.4, 0.8);
+drone.setPosition(0, 1.5, 0);
+
+const mat = new pc.StandardMaterial();
+mat.diffuse = new pc.Color(0, 0.9, 1);
+mat.emissive = new pc.Color(0, 0.4, 0.6);
+mat.update();
+drone.render.material = mat;
+
+app.root.addChild(drone);
+
+let t = 0;
+app.on('update', (dt) => {
+  t += dt * 2.5;
+  drone.setPosition(Math.sin(t * 0.8) * 1.5, 1.5 + Math.sin(t * 2) * 0.25, 0);
+  drone.rotate(10 * dt, 40 * dt, 5 * dt);
+});`;
+
+    await this.step(1600, 'qwen', 'Qwen (Developer)', 
+      `了解しました。PlayCanvas Engine用のEntity生成と回転・ホバリングコードを記述しました：
+\`\`\`javascript
+${generatedScript}
+\`\`\`
+DeepSeek、コードレビューとPlayCanvas v2互換性検査をお願いします。`
+    );
+
+    // 3. DeepSeek (Reviewer) - 監査・修正
+    await this.step(1400, 'deepseek', 'DeepSeek (Reviewer)', 
+      `コードを精査しました。
+- ポジション更新時のベクトル参照リークなし。
+- dt（デルタタイム）の乗算が正しく行われており、可変フレームレート下でも物理挙動が安定します。
+- 衝突判定用のボリューム境界も適正です。品質基準承認を推薦します。
+GLM、テスト実行をお願いします。`
+    );
+
+    // 4. GLM (Tester) - 品質確認
+    await this.step(1200, 'glm', 'GLM (Tester)', 
+      `WebGL 2.0シェーダーコンパイルテストおよび境界値チェック完了：
+- 構文エラー: 0
+- 描画コール負荷: 極小 (Draw Call: 1)
+- 実行判定: PASS
+AIチームの合意が完了しました。人間による最終承認（Approval Gate）を要求します。`
+    );
+
+    badge.textContent = 'Agreement Reached (Waiting Approval)';
+    badge.style.color = 'var(--accent-green)';
+    this.isConferencing = false;
+
+    // 承認ゲートの起動
+    this.platform.openGate(
+      `AI Conference Agreement: ${userGoal}`,
+      generatedScript,
+      () => {
+        // 承認時: PlayCanvas Engineへ動的インジェクション
+        this.injectToPlayCanvas(generatedScript);
+        this.platform.showToast('AI Generated Entity Injected into PlayCanvas!');
+      }
+    );
+  }
+
+  injectToPlayCanvas(scriptStr) {
+    try {
+      const app = window.gameStudio.app;
+      // スクリプト文字列を評価・実行
+      const executeFn = new Function('app', 'pc', scriptStr);
+      executeFn(app, pc);
+      window.gameStudio.renderHierarchy();
+      window.nexusApp.switchView('workspace');
+    } catch (e) {
+      console.error('PlayCanvas Script Injection Error:', e);
+      window.nexusApp.showToast(`Injection Error: ${e.message}`);
     }
+  }
 
-    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
-    require(['vs/editor/editor.main'], () => {
-      this.editor = monaco.editor.create(this.container, {
-        value: this.files['index.html'] || '',
-        language: 'html',
-        theme: 'vs-dark',
-        automaticLayout: true,
-        fontSize: 13,
-        minimap: { enabled: false },
-        padding: { top: 12 }
-      });
+  step(delay, agentId, agentName, message) {
+    return new Promise(resolve => {
+      document.querySelectorAll('.conf-agent-card').forEach(c => c.classList.remove('speaking'));
+      const activeCard = document.getElementById(`card-${agentId}`);
+      if (activeCard) activeCard.classList.add('speaking');
 
-      this.editor.onDidChangeModelContent(() => {
-        this.files[this.currentFile] = this.editor.getValue();
-        this.triggerLivePreview();
-      });
-
-      console.log('✔ Monaco Editor Ready');
-      this.triggerLivePreview();
+      setTimeout(() => {
+        this.appendBubble(agentId, agentName, message);
+        if (activeCard) activeCard.classList.remove('speaking');
+        resolve();
+      }, delay);
     });
   }
 
-  loadProjectFiles(files) {
-    // filesが存在しない場合のフォールバック
-    if (!files || typeof files !== 'object') {
-      this.files = JSON.parse(JSON.stringify(DEFAULT_PROJECTS[1].files));
-    } else {
-      this.files = { ...files };
-    }
-    this.switchFile('index.html');
-  }
-
-  switchFile(fileName) {
-    this.currentFile = fileName;
-    if (!this.editor) return;
-
-    let lang = 'html';
-    if (fileName.endsWith('.css')) lang = 'css';
-    if (fileName.endsWith('.js')) lang = 'javascript';
-
-    monaco.editor.setModelLanguage(this.editor.getModel(), lang);
-    this.editor.setValue(this.files[fileName] || '');
-
-    document.querySelectorAll('.file-item').forEach(el => {
-      el.classList.toggle('active', el.dataset.file === fileName);
-    });
-    this.triggerLivePreview();
-  }
-
-  triggerLivePreview() {
-    if (!this.previewFrame) return;
-    const html = this.files['index.html'] || '';
-    const css = this.files['style.css'] || '';
-    const js = this.files['main.js'] || '';
-
-    const combinedDoc = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>${css}</style>
-      </head>
-      <body>
-        ${html.replace(/<!DOCTYPE html>|<\/?html>|<\/?body>|<\/?head>|<link.*?>|<script.*?><\/script>/gi, '')}
-        <script>${js}<\/script>
-      </body>
-      </html>
+  appendBubble(type, sender, text) {
+    const stream = document.getElementById('conf-messages');
+    const bubble = document.createElement('div');
+    bubble.className = `conf-bubble ${type}`;
+    bubble.innerHTML = `
+      <div class="conf-bubble-header"><span>${sender}</span></div>
+      <div>${text.replace(/\n/g, '<br>').replace(/```javascript([\s\S]*?)```/g, '<pre style="background:#000; padding:6px; margin:4px 0; border-radius:4px; font-family:monospace; color:#00ffaa; overflow-x:auto;">$1</pre>')}</div>
     `;
-
-    this.previewFrame.srcdoc = combinedDoc;
+    stream.appendChild(bubble);
+    stream.scrollTop = stream.scrollHeight;
   }
 }
 
 // ==========================================
-// 4. PLATFORM ORCHESTRATOR
+// 3. MAIN NEXUS PLATFORM ORCHESTRATOR
 // ==========================================
 class NexusPlatform {
   constructor() {
-    this.store = new NexusStore();
-    this.currentView = 'dashboard';
+    this.projects = this.loadProjects();
+    this.activeProjectId = this.projects[0].id;
+    this.currentView = 'workspace';
 
-    this.initUIEvents();
+    this.initUI();
 
-    window.gameStudio = new PlayCanvasStudio('playcanvas-canvas');
-    window.appStudio = new MonacoStudio('monaco-editor-container', 'app-preview-frame');
+    // Engines
+    window.gameStudio = new PlayCanvasNativeStudio('playcanvas-canvas');
+    this.conference = new AIConferenceSystem(this);
 
-    this.render();
-    if (this.store.activeProjectId) {
-      this.selectProject(this.store.activeProjectId);
-    }
+    this.renderProjects();
+    this.selectProject(this.activeProjectId);
   }
 
-  initUIEvents() {
+  loadProjects() {
+    try {
+      const s = localStorage.getItem(STORAGE_PROJECTS_KEY);
+      if (s) return JSON.parse(s);
+    } catch(e) {}
+    return [
+      { id: 'p_game_1', name: 'Cyber Arena 3D', type: 'GAME', desc: 'PlayCanvas Engine 3D Game' },
+      { id: 'p_app_1', name: 'Cyber Web App', type: 'APP', desc: 'Monaco Editor IDE' }
+    ];
+  }
+
+  initUI() {
     // Navigation
     document.querySelectorAll('.nav-item').forEach(btn => {
       btn.addEventListener('click', () => this.switchView(btn.dataset.view));
     });
 
-    // Project Modals
+    // ツールバーボタン
+    document.getElementById('camera-reset').addEventListener('click', () => window.gameStudio.resetCamera());
+    document.getElementById('btn-add-cube').addEventListener('click', () => window.gameStudio.addPrimitive('box', 'Box'));
+    document.getElementById('btn-add-sphere').addEventListener('click', () => window.gameStudio.addPrimitive('sphere', 'Sphere'));
+    document.getElementById('btn-add-light').addEventListener('click', () => {
+      const light = new pc.Entity('Point Light');
+      light.addComponent('light', { type: 'omni', color: new pc.Color(0, 1, 0.8), range: 10 });
+      light.setPosition(0, 3, 0);
+      window.gameStudio.app.root.addChild(light);
+      window.gameStudio.entities.push(light);
+      window.gameStudio.renderHierarchy();
+      this.showToast('Added Omni Light');
+    });
+
+    // Play/Stop ボタン
+    const playBtn = document.getElementById('btn-toggle-play');
+    playBtn.addEventListener('click', () => {
+      window.gameStudio.isPlaying = !window.gameStudio.isPlaying;
+      playBtn.classList.toggle('playing', window.gameStudio.isPlaying);
+      document.getElementById('play-icon').textContent = window.gameStudio.isPlaying ? '⏹' : '▶';
+      document.getElementById('play-text').textContent = window.gameStudio.isPlaying ? 'STOP GAME' : 'PLAY GAME';
+      this.showToast(window.gameStudio.isPlaying ? 'Game Loop Started' : 'Game Stopped (Edit Mode)');
+    });
+
+    // AI Conference 起動ボタン
+    document.getElementById('btn-trigger-ai-confer').addEventListener('click', () => {
+      this.switchView('conference');
+      document.getElementById('conf-input').focus();
+    });
+
+    // 会議フォーム送信
+    document.getElementById('conf-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('conf-input');
+      const val = input.value.trim();
+      if (!val) return;
+      input.value = '';
+      this.conference.runConference(val);
+    });
+
+    // Approval Gate
+    document.getElementById('gate-btn-approve').addEventListener('click', () => {
+      document.getElementById('modal-approval-gate').classList.remove('active');
+      if (this.pendingApproveFn) this.pendingApproveFn();
+      this.pendingApproveFn = null;
+    });
+    document.getElementById('gate-btn-reject').addEventListener('click', () => {
+      document.getElementById('modal-approval-gate').classList.remove('active');
+      this.pendingApproveFn = null;
+      this.showToast('Change Rejected');
+    });
+
+    // Projects Modal
     document.getElementById('btn-quick-new-proj').addEventListener('click', () => this.openCreateModal());
     document.getElementById('btn-open-create-modal').addEventListener('click', () => this.openCreateModal());
     document.getElementById('btn-close-proj-modal').addEventListener('click', () => this.closeCreateModal());
     document.getElementById('btn-cancel-proj').addEventListener('click', () => this.closeCreateModal());
     document.getElementById('btn-submit-proj').addEventListener('click', () => this.handleCreateProject());
-
-    // Studio Options Select
-    document.querySelectorAll('.studio-option input').forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        document.querySelectorAll('.studio-option').forEach(opt => opt.classList.remove('active'));
-        e.target.closest('.studio-option').classList.add('active');
-      });
-    });
-
-    // Game Controls
-    document.getElementById('btn-add-cube').addEventListener('click', () => {
-      window.gameStudio.addEntity('box', 'Cube ' + (window.gameStudio.entities.length + 1));
-      this.showToast('Cube added to 3D Scene');
-    });
-    document.getElementById('btn-add-sphere').addEventListener('click', () => {
-      window.gameStudio.addEntity('sphere', 'Sphere ' + (window.gameStudio.entities.length + 1));
-      this.showToast('Sphere added to 3D Scene');
-    });
-    document.getElementById('btn-toggle-play').addEventListener('click', () => {
-      this.showToast('PlayCanvas 3D Game Loop Active');
-    });
-
-    // App Controls
-    document.querySelectorAll('.file-item').forEach(item => {
-      item.addEventListener('click', () => window.appStudio.switchFile(item.dataset.file));
-    });
-    document.getElementById('btn-run-code').addEventListener('click', () => {
-      window.appStudio.triggerLivePreview();
-      this.showToast('Preview Refreshed');
-    });
-
-    // AI Chat
-    document.getElementById('chat-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.handleAIChat();
-    });
-
-    // Approval Gate
-    document.getElementById('gate-btn-approve').addEventListener('click', () => this.handleApproval(true));
-    document.getElementById('gate-btn-reject').addEventListener('click', () => this.handleApproval(false));
   }
 
   switchView(viewName) {
@@ -395,222 +607,79 @@ class NexusPlatform {
     const navBtn = document.querySelector(`.nav-item[data-view="${viewName}"]`);
     if (navBtn) navBtn.classList.add('active');
 
-    if (viewName === 'workspace') {
-      const p = this.store.getActiveProject();
-      if (p.type === 'GAME' && window.gameStudio && window.gameStudio.app) {
-        window.gameStudio.app.resizeCanvas();
-        window.gameStudio.renderHierarchy();
-      } else if (p.type === 'APP' && window.appStudio && window.appStudio.editor) {
-        window.appStudio.editor.layout();
-      }
+    if (viewName === 'workspace' && window.gameStudio && window.gameStudio.app) {
+      window.gameStudio.app.resizeCanvas();
+      window.gameStudio.renderHierarchy();
     }
-    this.render();
+  }
+
+  startAIConference(task) {
+    this.switchView('conference');
+    this.conference.runConference(task);
+  }
+
+  openGate(title, diff, onApprove) {
+    document.getElementById('gate-action-title').textContent = title;
+    document.getElementById('gate-diff-content').textContent = diff;
+    this.pendingApproveFn = onApprove;
+    document.getElementById('modal-approval-gate').classList.add('active');
   }
 
   selectProject(id) {
-    this.store.activeProjectId = id;
-    const p = this.store.getActiveProject();
-    if (!p) return;
-
-    this.showToast(`Active Studio: ${p.name}`);
-
-    document.getElementById('header-active-project').textContent = `${p.type === 'GAME' ? '🎮' : '💻'} ${p.name}`;
+    this.activeProjectId = id;
+    const p = this.projects.find(x => x.id === id) || this.projects[0];
+    document.getElementById('header-active-project').textContent = p.name;
     document.getElementById('workspace-title').textContent = p.name;
-    const badge = document.getElementById('workspace-type-badge');
-    badge.textContent = `${p.type} STUDIO`;
-    badge.className = `badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}`;
-
-    const gameContainer = document.getElementById('studio-game-container');
-    const appContainer = document.getElementById('studio-app-container');
-    const gameControls = document.getElementById('workspace-controls-game');
-    const appControls = document.getElementById('workspace-controls-app');
-
-    if (p.type === 'GAME') {
-      gameContainer.style.display = 'flex';
-      appContainer.style.display = 'none';
-      gameControls.style.display = 'flex';
-      appControls.style.display = 'none';
-      setTimeout(() => {
-        if (window.gameStudio && window.gameStudio.app) {
-          window.gameStudio.app.resizeCanvas();
-          window.gameStudio.renderHierarchy();
-        }
-      }, 50);
-    } else {
-      gameContainer.style.display = 'none';
-      appContainer.style.display = 'flex';
-      gameControls.style.display = 'none';
-      appControls.style.display = 'flex';
-      if (window.appStudio) {
-        window.appStudio.loadProjectFiles(p.files);
-      }
-    }
-    this.render();
+    this.showToast(`Active Studio: ${p.name}`);
   }
 
-  openCreateModal() {
-    document.getElementById('proj-name').value = '';
-    document.getElementById('modal-create-project').classList.add('active');
-    document.getElementById('proj-name').focus();
-  }
-
-  closeCreateModal() {
-    document.getElementById('modal-create-project').classList.remove('active');
-  }
+  openCreateModal() { document.getElementById('modal-create-project').classList.add('active'); }
+  closeCreateModal() { document.getElementById('modal-create-project').classList.remove('active'); }
 
   handleCreateProject() {
-    const nameInput = document.getElementById('proj-name');
-    const name = nameInput.value.trim() || `Studio Project ${this.store.projects.length + 1}`;
-    
-    // 確実に選択されたスタジオ種別を取得
-    const checkedRadio = document.querySelector('input[name="studio-type"]:checked');
-    const type = checkedRadio ? checkedRadio.value : 'GAME';
-
-    const newProj = {
-      id: 'proj_' + Date.now(),
-      name,
-      type,
-      desc: type === 'GAME' ? 'PlayCanvas 3D Game Studio' : 'Monaco Web IDE Studio',
-      created: new Date().toLocaleDateString(),
-      files: type === 'APP' ? JSON.parse(JSON.stringify(DEFAULT_PROJECTS[1].files)) : undefined
-    };
-
-    // 1. Storeへ保存 (LocalStorage自動永続化)
-    this.store.addProject(newProj);
-    this.store.log('Human', `プロジェクト [${name}] (${type} STUDIO) を新規作成しました。`);
-
-    // 2. モーダルを閉じる
+    const name = document.getElementById('proj-name').value.trim() || `PlayCanvas Project ${this.projects.length + 1}`;
+    const type = document.querySelector('input[name="studio-type"]:checked').value;
+    const newProj = { id: 'p_' + Date.now(), name, type, desc: `${type} Studio` };
+    this.projects.unshift(newProj);
+    localStorage.setItem(STORAGE_PROJECTS_KEY, JSON.stringify(this.projects));
     this.closeCreateModal();
-
-    // 3. UI一覧を再描画
-    this.render();
-
-    // 4. 新規プロジェクトのスタジオを開く
+    this.renderProjects();
     this.selectProject(newProj.id);
     this.switchView('workspace');
-    this.showToast(`Created & Launched: ${name}`);
-  }
-
-  deleteProject(id) {
-    if (!confirm('このプロジェクトを削除しますか？')) return;
-    this.store.deleteProject(id);
-    this.render();
-    if (this.store.activeProjectId) {
-      this.selectProject(this.store.activeProjectId);
-    }
-    this.showToast('Project deleted');
-  }
-
-  handleAIChat() {
-    const input = document.getElementById('chat-input');
-    const msg = input.value.trim();
-    if (!msg) return;
-
-    const chatContainer = document.getElementById('chat-messages');
-    chatContainer.innerHTML += `<div class="chat-bubble user">${msg}</div>`;
-    input.value = '';
-
-    const p = this.store.getActiveProject();
-    const typing = document.createElement('div');
-    typing.className = 'chat-bubble agent';
-    typing.textContent = 'Qwen Developer is generating patch...';
-    chatContainer.appendChild(typing);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-
-    setTimeout(() => {
-      let patchPreview = '';
-      if (p.type === 'GAME') {
-        patchPreview = `// [Qwen] PlayCanvas 3D Scene Injection\n+ const entity = new pc.Entity('AI_${msg.slice(0, 10)}');\n+ entity.addComponent('render', { type: 'sphere' });\n+ entity.setPosition(0, 2, 0);\n+ app.root.addChild(entity);`;
-        this.currentPendingPatch = () => {
-          window.gameStudio.addEntity('sphere', 'AI Sphere');
-        };
-      } else {
-        patchPreview = `// [Qwen] Monaco Editor Code Injection\n+ <!-- Added by AI: "${msg}" -->\n+ <div style="border:1px dashed #00f3ff; padding:10px; margin-top:12px;">\n+   ✨ AI Generated: ${msg}\n+ </div>`;
-        this.currentPendingPatch = () => {
-          const currentHtml = window.appStudio.files['index.html'] || '';
-          window.appStudio.files['index.html'] = currentHtml.replace('</div>', `  <div style="border:1px dashed #00f3ff; padding:10px; margin-top:12px;">✨ AI Added: ${msg}</div>\n  </div>`);
-          window.appStudio.switchFile('index.html');
-          window.appStudio.triggerLivePreview();
-        };
-      }
-
-      typing.textContent = `[Qwen] 変更差分を生成しました。Human Approval Gateへ送出します。`;
-
-      document.getElementById('gate-diff-content').textContent = patchPreview;
-      document.getElementById('modal-approval-gate').classList.add('active');
-    }, 600);
-  }
-
-  handleApproval(approved) {
-    document.getElementById('modal-approval-gate').classList.remove('active');
-    if (approved && this.currentPendingPatch) {
-      this.currentPendingPatch();
-      this.showToast('AI Patch Applied!');
-      this.store.log('Human Gate', 'AIのコード/シーン変更を承認して適用しました。');
-      this.switchView('workspace');
-    } else {
-      this.showToast('Change rejected.');
-    }
-    this.currentPendingPatch = null;
   }
 
   showToast(msg) {
     const t = document.getElementById('toast');
-    if (!t) return;
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2400);
   }
 
-  render() {
-    document.getElementById('stat-proj-count').textContent = this.store.projects.length;
-
-    // Dashboard Recent Projects
-    const dashRecent = document.getElementById('dash-recent-projects');
-    if (dashRecent) {
-      dashRecent.innerHTML = this.store.projects.map(p => `
-        <div class="compact-proj-item" onclick="window.nexusApp.selectProject('${p.id}'); window.nexusApp.switchView('workspace');">
+  renderProjects() {
+    const grid = document.getElementById('projects-grid');
+    const recent = document.getElementById('dash-recent-projects');
+    if (grid) {
+      grid.innerHTML = this.projects.map(p => `
+        <div class="project-card ${p.id === this.activeProjectId ? 'active-proj' : ''}">
           <div>
-            <strong>${p.name}</strong> 
-            <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type} STUDIO</span>
-          </div>
-          <button class="btn btn-xs btn-primary">起動</button>
-        </div>
-      `).join('');
-    }
-
-    // Projects Grid
-    const projGrid = document.getElementById('projects-grid');
-    if (projGrid) {
-      projGrid.innerHTML = this.store.projects.map(p => `
-        <div class="project-card ${p.id === this.store.activeProjectId ? 'active-proj' : ''}">
-          <div>
-            <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type} STUDIO</span>
+            <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type}</span>
             <div class="project-card-title">${p.name}</div>
-            <div class="project-card-desc">${p.desc}</div>
           </div>
-          <div class="project-card-footer">
-            <span style="font-size:10px; color:var(--text-subtle);">${p.created}</span>
-            <div style="display:flex; gap:6px;">
-              <button class="btn btn-xs btn-danger-subtle" onclick="window.nexusApp.deleteProject('${p.id}')">削除</button>
-              <button class="btn btn-xs btn-primary" onclick="window.nexusApp.selectProject('${p.id}'); window.nexusApp.switchView('workspace');">スタジオを開く</button>
-            </div>
-          </div>
+          <button class="btn btn-xs btn-primary" onclick="window.nexusApp.selectProject('${p.id}'); window.nexusApp.switchView('workspace');">スタジオ起動</button>
         </div>
       `).join('');
     }
-
-    // Logs
-    const logContainer = document.getElementById('dash-activity-log');
-    if (logContainer) {
-      logContainer.innerHTML = this.store.logs.map(l => `
-        <div class="log-entry"><span style="color:var(--text-subtle)">${l.time}</span> [${l.agent}] ${l.message}</div>
+    if (recent) {
+      recent.innerHTML = this.projects.map(p => `
+        <div class="compact-proj-item" onclick="window.nexusApp.selectProject('${p.id}'); window.nexusApp.switchView('workspace');">
+          <strong>${p.name}</strong>
+          <span class="badge ${p.type === 'GAME' ? 'badge-game' : 'badge-app'}">${p.type}</span>
+        </div>
       `).join('');
     }
   }
 }
 
-// グローバルスコープに明示的にバインド（HTMLのインラインonclickから参照可能にする）
 window.addEventListener('DOMContentLoaded', () => {
   window.nexusApp = new NexusPlatform();
 });
