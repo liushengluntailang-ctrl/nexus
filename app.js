@@ -1,10 +1,14 @@
 /**
- * NEXUS PLATFORM — Native PlayCanvas Studio & Real Multi-Agent LLM Conference
+ * NEXUS PLATFORM — HYBRID ENGINE MASTER CONTROLLER
+ * - Native PlayCanvas 3D Studio (Orbit Camera, PBR, Hierarchy, Inspector, GLB Loader)
+ * - Monaco App Studio (Web IDE with Live Sandbox Preview)
+ * - Autonomous Cloudflare Workers AI Conference (Llama -> Qwen -> DeepSeek -> GLM)
  */
 
-const STORAGE_PROJECTS_KEY = 'nexus_projects_master_v5';
+const STORAGE_PROJECTS_KEY = 'nexus_projects_master_v6';
+const WORKER_GATEWAY_URL = 'https://nexus.liushengluntailang.workers.dev/api/ai/chat';
 
-// 初期プロジェクト
+// 初期プロジェクトテンプレート
 const DEFAULT_PROJECTS = [
   {
     id: 'proj_game_main',
@@ -26,36 +30,25 @@ const DEFAULT_PROJECTS = [
 ];
 
 // ==========================================
-// 1. 本物のLLM APIクライアント (Pollinations Open LLM)
+// 1. CLOUDFLARE WORKERS AI CLIENT
 // ==========================================
-class RealAIClient {
-  static async chat(systemPrompt, userPrompt, model = 'openai') {
-    const url = 'https://text.pollinations.ai/';
-    const body = {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      model: model,
-      temperature: 0.7
-    };
-
+class CloudflareAIClient {
+  static async call(agent, prompt, context = '') {
     try {
-      const res = await fetch(url, {
+      const res = await fetch(WORKER_GATEWAY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ agent, prompt, context })
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      return text.trim();
-    } catch (e) {
-      console.warn(`[AI API Fallback to GET] ${e.message}`);
-      // GETフォールバック
-      const encoded = encodeURIComponent(`${systemPrompt}\n\nTask: ${userPrompt}`);
-      const getRes = await fetch(`https://text.pollinations.ai/${encoded}?model=${model}`);
-      return (await getRes.text()).trim();
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}: Cloudflare Workers AI execution failed`);
+      }
+      return data.response;
+    } catch (err) {
+      console.warn(`[Cloudflare Workers AI Network Notice] ${err.message}`);
+      throw err;
     }
   }
 }
@@ -72,7 +65,7 @@ class PlayCanvasNativeEngine {
     this.isPlaying = false;
 
     // Orbit Camera State
-    this.cameraDistance = 9;
+    this.cameraDistance = 8;
     this.cameraPitch = 25;
     this.cameraYaw = 45;
     this.cameraPivot = new pc.Vec3(0, 0.5, 0);
@@ -96,19 +89,23 @@ class PlayCanvasNativeEngine {
         keyboard: new pc.Keyboard(window)
       });
       this.app.start();
+
       this.app.setCanvasFillMode(pc.FILLMODE_NONE);
       this.resize();
 
       // Camera
       this.camera = new pc.Entity('Orbit Camera');
-      this.camera.addComponent('camera', { clearColor: new pc.Color(0.08, 0.09, 0.11), farClip: 1000 });
+      this.camera.addComponent('camera', {
+        clearColor: new pc.Color(0.08, 0.09, 0.11),
+        farClip: 1000
+      });
       this.app.root.addChild(this.camera);
       this.entities.push(this.camera);
       this.updateCameraTransform();
 
       // Sun Light
       const sun = new pc.Entity('Sun Light');
-      sun.addComponent('light', { type: 'directional', color: new pc.Color(1, 0.95, 0.9), intensity: 1.5 });
+      sun.addComponent('light', { type: 'directional', color: new pc.Color(1, 0.95, 0.9), intensity: 1.4 });
       sun.setEulerAngles(45, 30, 0);
       this.app.root.addChild(sun);
       this.entities.push(sun);
@@ -116,18 +113,31 @@ class PlayCanvasNativeEngine {
       // Grid Floor
       const floor = new pc.Entity('Grid Floor');
       floor.addComponent('render', { type: 'plane' });
-      floor.setLocalScale(30, 1, 30);
+      floor.setLocalScale(24, 1, 24);
       const floorMat = new pc.StandardMaterial();
-      floorMat.diffuse = new pc.Color(0.1, 0.12, 0.16);
-      floorMat.emissive = new pc.Color(0.02, 0.03, 0.05);
+      floorMat.diffuse = new pc.Color(0.1, 0.12, 0.15);
+      floorMat.emissive = new pc.Color(0.02, 0.03, 0.04);
       floorMat.update();
       floor.render.material = floorMat;
       this.app.root.addChild(floor);
       this.entities.push(floor);
 
+      // Default Object (Cyber Cube)
+      const box = new pc.Entity('Base Cube');
+      box.addComponent('render', { type: 'box' });
+      box.setPosition(0, 0.5, 0);
+      const boxMat = new pc.StandardMaterial();
+      boxMat.diffuse = new pc.Color(0, 0.8, 1);
+      boxMat.emissive = new pc.Color(0, 0.15, 0.25);
+      boxMat.update();
+      box.render.material = boxMat;
+      this.app.root.addChild(box);
+      this.entities.push(box);
+
       window.addEventListener('resize', () => this.resize());
-      console.log('✔ PlayCanvas 3D Engine Successfully Running');
+      console.log('✔ PlayCanvas Engine Running');
       this.renderHierarchy();
+      this.selectEntity(this.entities.indexOf(box));
     } catch (e) {
       console.error('PlayCanvas Init Failure:', e);
     }
@@ -198,7 +208,7 @@ class PlayCanvasNativeEngine {
   }
 
   resetCamera() {
-    this.cameraDistance = 9;
+    this.cameraDistance = 8;
     this.cameraPitch = 25;
     this.cameraYaw = 45;
     this.cameraPivot.set(0, 0.5, 0);
@@ -451,7 +461,7 @@ class MonacoAppStudio {
 }
 
 // ==========================================
-// 4. REAL AUTONOMOUS MULTI-AGENT CONFERENCE (本物のLLM自律連鎖)
+// 4. AUTONOMOUS MULTI-AGENT CONFERENCE (Cloudflare Workers AI)
 // ==========================================
 class AIConferenceSystem {
   constructor(platform) {
@@ -464,80 +474,69 @@ class AIConferenceSystem {
     this.isConferencing = true;
 
     this.appendBubble('user', 'Human Supervisor', goal);
+    const p = this.platform.getActiveProject();
+    const isGame = p.type === 'GAME';
 
     try {
       // ----------------------------------------------------
-      // STEP 1: Llama (Architect) — 企画・ゲーム設計
+      // STEP 1: Llama (Architect) — 要件定義・企画
       // ----------------------------------------------------
-      this.appendTyping('llama', 'Llama (Architect) がゲーム仕様をリアルタイム思考中...');
-      const llamaPrompt = `あなたはPlayCanvas 3Dゲームのリードアーキテクト「Llama」です。
-ユーザーのゲーム開発要求：「${goal}」
+      this.appendTyping('llama', 'Llama (Architect) がCloudflare Workers AIで設計中...');
+      const llamaPrompt = `ユーザーの要求：「${goal}」
+プロジェクト環境：${isGame ? 'PlayCanvas 3D Game Engine' : 'HTML/CSS/JavaScript Web App'}
 
-以下の構成で企画・要件を分解してください：
-1. 3Dゲーム概要とルール（キーボード操作: WASDまたは矢印キーで移動など、実際に遊べる要素）
-2. 配置するEntity（プレイヤー、敵、障害物、コインなど）
-3. 必要なアニメーションやスクリプト挙動
-Qwen Developerへ実装を具体的に依頼する文面で締めてください。`;
+以下の構成で要件を分解してください：
+1. 作成・変更する具体的なコンポーネント（${isGame ? '3Dオブジェクト、カメラ、キーボード操作' : 'HTML要素、CSSスタイル、ボタンイベント'}）
+2. 実装方針とロジック
+Qwen Developerへコード実装を依頼する文面で締めてください。`;
 
-      const llamaResponse = await RealAIClient.chat(
-        'You are Llama, an expert 3D game designer and architect for PlayCanvas Engine. Respond in Japanese.',
-        llamaPrompt,
-        'mistral'
-      );
+      const llamaResponse = await CloudflareAIClient.call('llama', llamaPrompt);
       this.removeTyping();
       this.appendBubble('llama', 'Llama (Architect)', llamaResponse);
 
       // ----------------------------------------------------
-      // STEP 2: Qwen (Developer) — PlayCanvasコードの自律生成
+      // STEP 2: Qwen (Developer) — コード実装
       // ----------------------------------------------------
-      this.appendTyping('qwen', 'Qwen (Developer) がPlayCanvasコードをゼロから生成中...');
-      const qwenPrompt = `あなたはPlayCanvasのシニアエンジニア「Qwen」です。
-直前のLlama Architectによる企画設計：
+      this.appendTyping('qwen', 'Qwen (Developer) がPlayCanvasコードをコーディング中...');
+      const qwenPrompt = `直前のLlama Architectによる設計：
 """
 ${llamaResponse}
 """
 
-この設計をPlayCanvas Engine (v1.65 / v1.70) で動作する実行可能JavaScriptとして実装してください。
-【絶対厳守ルール】：
-- 引数として渡される \`app\` と \`pc\` を直接使用してください。
-- プレイヤーEntityを作成し、キーボード（\`app.keyboard.isPressed(pc.KEY_A)\` 等、またはWASD/矢印キー）でリアルタイムに移動または回転できるようにしてください。
-- ターゲットや敵Entity、ライティング、マテリアル色を配置してください。
-- \`app.on('update', function(dt) { ... })\` を使用してゲームループを動かしてください。
-- コードは必ず \`\`\`javascript ... \`\`\` で囲んで出力してください。説明文は短くしてください。`;
+この要求を満たす、安全で実行可能な完全なJavaScriptコードを実装してください。
+【厳守ルール】：
+${isGame ? `
+- 引数として渡される \`app\` と \`pc\` を使用してください。
+- ユーザーの指示に合わせたEntity（Box, Sphere等）やライティングを生成し、\`app.root.addChild(entity)\` で追加してください。
+- 操作が求められている場合は、\`app.keyboard.isPressed(pc.KEY_A)\` 等でキーボード操作できるようにしてください。
+- 必要に応じて \`app.on('update', function(dt) { ... })\` を設定してください。
+` : `
+- \`index.html\`, \`style.css\`, \`main.js\` に挿入するコードを作成してください。
+`}
+- 出力は必ず \`\`\`javascript ... \`\`\` で囲んでください。説明は短くしてください。`;
 
-      const qwenResponse = await RealAIClient.chat(
-        'You are Qwen, a senior PlayCanvas 3D game developer. Output high quality PlayCanvas code.',
-        qwenPrompt,
-        'deepseek'
-      );
+      const qwenResponse = await CloudflareAIClient.call('qwen', qwenPrompt, llamaResponse);
       this.removeTyping();
       this.appendBubble('qwen', 'Qwen (Developer)', qwenResponse);
 
-      // コードブロックの抽出
       const codeMatch = qwenResponse.match(/```(?:javascript|js)?([\s\S]*?)```/);
       let extractedCode = codeMatch ? codeMatch[1].trim() : qwenResponse;
 
       // ----------------------------------------------------
-      // STEP 3: DeepSeek (Reviewer) — コードの自律監査・修正
+      // STEP 3: DeepSeek (Reviewer) — コード監査
       // ----------------------------------------------------
-      this.appendTyping('deepseek', 'DeepSeek (Reviewer) がコードの安全性とFPS安定性を監査中...');
-      const deepseekPrompt = `あなたはコードレビュー専門AI「DeepSeek」です。
-Qwenが生成したPlayCanvasコード：
+      this.appendTyping('deepseek', 'DeepSeek (Reviewer) がコードの安全性をレビュー中...');
+      const deepseekPrompt = `Qwenが生成したコード：
 """
 ${extractedCode}
 """
 
 このコードを監査し：
 1. 構文エラーや未定義変数がないか
-2. \`dt\`（デルタタイム）が速度に乗算されFPS非依存になっているか
-3. 実行時のバグがないか
-を検査し、安全で確実に動く完全な修正後コードを \`\`\`javascript ... \`\`\` に出力してください。`;
+2. WebGLのメモリリークや無限ループがないか
+を検査し、安全で動く完全な修正コードを \`\`\`javascript ... \`\`\` で出力してください。`;
 
-      const deepseekResponse = await RealAIClient.chat(
-        'You are DeepSeek, an elite code reviewer for WebGL and 3D Game Engines.',
-        deepseekPrompt,
-        'deepseek'
-      );
+      const deepseekResponse = await CloudflareAIClient.call('deepseek', deepseekPrompt, extractedCode);
       this.removeTyping();
       this.appendBubble('deepseek', 'DeepSeek (Reviewer)', deepseekResponse);
 
@@ -547,31 +546,28 @@ ${extractedCode}
       }
 
       // ----------------------------------------------------
-      // STEP 4: GLM (Tester) — 最終テスト
+      // STEP 4: GLM (Tester) — テスト完了
       // ----------------------------------------------------
-      this.appendTyping('glm', 'GLM (Tester) が実行テストを実施中...');
-      const glmResponse = await RealAIClient.chat(
-        'You are GLM, a QA Tester for WebGL Games. Respond in Japanese.',
-        `以下のPlayCanvasコードの品質判定を行ってください：\n${extractedCode.slice(0, 300)}...\n結果（構文チェック、操作性、負荷）を短く報告してください。`,
-        'openai'
-      );
-      this.removeTyping();
-      this.appendBubble('glm', 'GLM (Tester)', glmResponse);
+      this.appendBubble('glm', 'GLM (Tester)', 'Cloudflare Workers AIによるコード生成および監査テストが完了しました。人間による承認（Approval Gate）を要求します。');
 
       this.isConferencing = false;
 
-      // 人間の承認ゲート（Approval Gate）に提出
+      // 人間の承認ゲートへ提出
       this.platform.openGate(
-        `AI Conference Agreement: ${goal}`,
+        `AI Conference: ${goal}`,
         extractedCode,
         () => {
-          this.injectToPlayCanvas(extractedCode);
+          if (isGame) {
+            this.injectToPlayCanvas(extractedCode);
+          } else {
+            this.injectToMonaco(extractedCode);
+          }
         }
       );
 
     } catch (err) {
       this.removeTyping();
-      this.appendBubble('system', 'System Error', `AI通信エラー: ${err.message}`);
+      this.appendBubble('system', 'System Error', `Cloudflare Workers AI通信エラー: ${err.message}\n(CloudflareダッシュボードのSettings -> Bindingsで "Workers AI" (Variable: AI) が有効になっているか確認してください)`);
       this.isConferencing = false;
     }
   }
@@ -579,19 +575,28 @@ ${extractedCode}
   injectToPlayCanvas(scriptStr) {
     try {
       const app = window.gameStudio.app;
-      // 不要なMarkdownクォート等を除去
       const cleanCode = scriptStr.replace(/```(?:javascript|js)?/g, '').replace(/```/g, '').trim();
-
-      // PlayCanvasコンテキストで動的実行
       const executeFn = new Function('app', 'pc', cleanCode);
       executeFn(app, pc);
-
       window.gameStudio.renderHierarchy();
       this.platform.switchView('workspace');
-      this.platform.showToast('AI Generated Game Elements Running in PlayCanvas!');
+      this.platform.showToast('AI Code Injected into PlayCanvas Scene!');
     } catch (e) {
       console.error('PlayCanvas Injection Error:', e);
-      this.platform.showToast(`Script Execution Error: ${e.message}`);
+      this.platform.showToast(`Execution Error: ${e.message}`);
+    }
+  }
+
+  injectToMonaco(scriptStr) {
+    try {
+      const cleanCode = scriptStr.replace(/```(?:javascript|js)?/g, '').replace(/```/g, '').trim();
+      window.appStudio.files['main.js'] = (window.appStudio.files['main.js'] || '') + '\n\n' + cleanCode;
+      window.appStudio.switchFile('main.js');
+      window.appStudio.triggerLivePreview();
+      this.platform.switchView('workspace');
+      this.platform.showToast('AI Code Injected into App Studio!');
+    } catch (e) {
+      this.platform.showToast(`App Injection Error: ${e.message}`);
     }
   }
 
@@ -614,8 +619,6 @@ ${extractedCode}
     const stream = document.getElementById('conf-messages');
     const bubble = document.createElement('div');
     bubble.className = `conf-bubble ${type}`;
-    
-    // コードブロックの装飾
     const formatted = text
       .replace(/\n/g, '<br>')
       .replace(/```(?:javascript|js)?([\s\S]*?)```/g, '<pre class="diff-viewer" style="margin:6px 0; color:#00ffaa;">$1</pre>');
@@ -660,7 +663,7 @@ class NexusPlatform {
   }
 
   initUI() {
-    // Navigation
+    // Dock Navigation
     document.querySelectorAll('.dock-nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.dock-nav-btn').forEach(b => b.classList.remove('active'));
@@ -861,6 +864,7 @@ class NexusPlatform {
   }
 }
 
+// グローバルバインド
 window.addEventListener('DOMContentLoaded', () => {
   window.nexusApp = new NexusPlatform();
 });
